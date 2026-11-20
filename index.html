@@ -830,17 +830,17 @@
         <div>
           <label class="field-label">Create or Join a Room</label>
           <div class="row-gap">
-            <button id="createRoomBtn" class="btn-primary" style="flex:1;">Create New Room</button>
+            <button id="createRoomBtn" type="button" class="btn-primary" style="flex:1;">Create New Room</button>
           </div>
 
           <div class="row-gap" style="margin-top:10px;">
             <input id="joinCodeInput" class="mono" type="text" maxlength="8" placeholder="Room code (e.g. X7K9M2)" style="text-transform:uppercase;" />
-            <button id="joinRoomBtn">Join Room</button>
+            <button id="joinRoomBtn" type="button">Join Room</button>
           </div>
 
           <div id="lobbyInviteBox" class="invite-box hidden">
             <span id="lobbyInviteUrl" class="invite-url mono"></span>
-            <button id="lobbyCopyBtn" class="btn-sm btn-primary">Copy Link</button>
+            <button id="lobbyCopyBtn" type="button" class="btn-sm btn-primary">Copy Link</button>
           </div>
         </div>
       </div>
@@ -853,8 +853,8 @@
           <div class="panel-desc" style="margin-bottom:0;">Add AI bots or start once 2–6 players are seated.</div>
         </div>
         <div class="row-gap">
-          <button id="addBotBtn" class="btn-sm">+ Add AI Bot</button>
-          <button id="startMatchBtn" class="btn-sm btn-primary">Start Match</button>
+          <button id="addBotBtn" type="button" class="btn-sm">+ Add AI Bot</button>
+          <button id="startMatchBtn" type="button" class="btn-sm btn-primary">Start Match</button>
         </div>
       </div>
       <div id="seatList" class="seat-list"></div>
@@ -905,7 +905,7 @@
           <div id="tradeModalTitle" class="panel-title" style="font-size:1.15rem;">Propose Trade</div>
           <div id="tradeModalSub" class="panel-desc" style="margin-bottom:0;"></div>
         </div>
-        <button id="closeTradeBtn" class="btn-sm btn-ghost">✕ Close</button>
+        <button id="closeTradeBtn" type="button" class="btn-sm btn-ghost">✕ Close</button>
       </div>
       <div id="tradeModalBody"></div>
     </div>
@@ -1089,4 +1089,1302 @@
           hasRolled: false,
           doublesCount: 0,
           dice: [1, 1],
-          freeParkingPool:
+          freeParkingPool: 0,
+          statusMessage: 'Waiting in lobby to start match.',
+          players: [
+            {
+              id: clientId,
+              name: hostName || 'Player 1',
+              colorId: colorId || 'crimson',
+              isBot: false,
+              cash: 1500,
+              pos: 0,
+              inJail: false,
+              jailTurns: 0,
+              jailCards: 0,
+              bankrupt: false
+            }
+          ],
+          tiles: BOARD.map(() => ({
+            ownerId: null,
+            houses: 0,
+            mortgaged: false
+          })),
+          logs: ['Room ' + code + ' created by ' + (hostName || 'Player 1') + '.']
+        };
+      }
+
+      function addLog(text) {
+        if (!state || !Array.isArray(state.logs)) return;
+        state.logs.unshift(text);
+        if (state.logs.length > 60) state.logs.length = 60;
+      }
+
+      function saveAndBroadcast(fromRemote) {
+        if (!state || !state.code) return;
+        safeSetStorage(storageKey(state.code), JSON.stringify(state));
+
+        if (broadcastChannel && !fromRemote) {
+          try {
+            broadcastChannel.postMessage({ type: 'STATE_SYNC', code: state.code, state: state });
+          } catch (_) {}
+        }
+
+        if (!fromRemote && peerConns.length > 0) {
+          peerConns.forEach((c) => {
+            if (c && c.open) {
+              try {
+                c.send({ type: 'STATE_SYNC', state: state });
+              } catch (_) {}
+            }
+          });
+        }
+
+        renderAll();
+        scheduleBotIfNeeded();
+      }
+
+      function setupSyncForRoom(code, isHost) {
+        if (broadcastChannel) {
+          try { broadcastChannel.close(); } catch (_) {}
+          broadcastChannel = null;
+        }
+        if (peer) {
+          try { peer.destroy(); } catch (_) {}
+          peer = null;
+          peerConns = [];
+        }
+
+        if ('BroadcastChannel' in window) {
+          try {
+            broadcastChannel = new BroadcastChannel('monopoly_bc_' + code);
+            broadcastChannel.onmessage = (ev) => {
+              if (ev.data && ev.data.type === 'STATE_SYNC' && ev.data.state) {
+                state = ev.data.state;
+                renderAll();
+                scheduleBotIfNeeded();
+              }
+            };
+          } catch (_) {}
+        }
+
+        const startPeer = () => {
+          if (typeof window.Peer !== 'function') return;
+          try {
+            const peerId = isHost ? 'MONO_ROOM_' + code : undefined;
+            peer = new window.Peer(peerId);
+            peer.on('open', () => {
+              const pill = $('syncPill');
+              if (pill) {
+                pill.textContent = isHost ? '● Host Link Ready' : '● Connected';
+                pill.className = 'pill pill-live';
+              }
+            });
+            peer.on('connection', (conn) => {
+              peerConns.push(conn);
+              conn.on('open', () => {
+                if (state) {
+                  try { conn.send({ type: 'STATE_SYNC', state: state }); } catch (_) {}
+                }
+              });
+              conn.on('data', (msg) => {
+                if (!msg) return;
+                if (msg.type === 'STATE_SYNC' && msg.state) {
+                  state = msg.state;
+                  saveAndBroadcast(true);
+                } else if (msg.type === 'PLAYER_ACTION' && msg.fn) {
+                  applyRemoteAction(msg.fn, msg.payload);
+                }
+              });
+            });
+            peer.on('error', () => {
+              const pill = $('syncPill');
+              if (pill) pill.textContent = '● Local/Fallback Sync';
+            });
+          } catch (_) {}
+        };
+
+        if (typeof window.Peer === 'function') {
+          startPeer();
+        } else {
+          setTimeout(startPeer, 600);
+        }
+      }
+
+      function connectAsGuest(code, name, colorId) {
+        const cleanCode = String(code || '').trim().toUpperCase();
+        if (!cleanCode) return;
+
+        let loaded = null;
+        const raw = safeGetStorage(storageKey(cleanCode));
+        if (raw) {
+          try { loaded = JSON.parse(raw); } catch (_) {}
+        }
+
+        if (!loaded) {
+          loaded = createFreshRoom(cleanCode, 'Host', 'crimson');
+          loaded.logs.unshift('Joined room ' + cleanCode + '.');
+        }
+
+        const existing = loaded.players.find((p) => p.id === clientId);
+        if (!existing && loaded.players.length < 6) {
+          const usedColors = new Set(loaded.players.map((p) => p.colorId));
+          const chosenColor = !usedColors.has(colorId)
+            ? colorId
+            : (PLAYER_COLORS.find((c) => !usedColors.has(c.id)) || PLAYER_COLORS[0]).id;
+
+          loaded.players.push({
+            id: clientId,
+            name: name || 'Guest',
+            colorId: chosenColor,
+            isBot: false,
+            cash: 1500,
+            pos: 0,
+            inJail: false,
+            jailTurns: 0,
+            jailCards: 0,
+            bankrupt: false
+          });
+          loaded.logs.unshift((name || 'Guest') + ' joined room ' + cleanCode + '.');
+        }
+
+        state = loaded;
+        setupSyncForRoom(cleanCode, false);
+
+        const tryGuestPeer = () => {
+          if (typeof window.Peer !== 'function') return;
+          try {
+            const hostPeer = new window.Peer();
+            hostPeer.on('open', () => {
+              const conn = hostPeer.connect('MONO_ROOM_' + cleanCode);
+              conn.on('open', () => {
+                peerConns.push(conn);
+                conn.send({
+                  type: 'PLAYER_ACTION',
+                  fn: 'join_guest',
+                  payload: { id: clientId, name: name || 'Guest', colorId: colorId }
+                });
+              });
+              conn.on('data', (msg) => {
+                if (msg && msg.type === 'STATE_SYNC' && msg.state) {
+                  state = msg.state;
+                  renderAll();
+                }
+              });
+            });
+          } catch (_) {}
+        };
+
+        if (typeof window.Peer === 'function') {
+          tryGuestPeer();
+        } else {
+          setTimeout(tryGuestPeer, 600);
+        }
+
+        saveAndBroadcast(false);
+      }
+
+      function applyRemoteAction(fn, payload) {
+        if (!state) return;
+        if (fn === 'join_guest' && payload) {
+          if (!state.players.some((p) => p.id === payload.id) && state.players.length < 6) {
+            const used = new Set(state.players.map((p) => p.colorId));
+            const col = !used.has(payload.colorId)
+              ? payload.colorId
+              : (PLAYER_COLORS.find((c) => !used.has(c.id)) || PLAYER_COLORS[0]).id;
+            state.players.push({
+              id: payload.id,
+              name: payload.name || 'Player',
+              colorId: col,
+              isBot: false,
+              cash: 1500,
+              pos: 0,
+              inJail: false,
+              jailTurns: 0,
+              jailCards: 0,
+              bankrupt: false
+            });
+            addLog((payload.name || 'Player') + ' connected via invite link.');
+            saveAndBroadcast(false);
+          }
+        }
+      }
+
+      function getPlayer(id) {
+        return state && Array.isArray(state.players) ? state.players.find((p) => p.id === id) || null : null;
+      }
+
+      function getCurrentPlayer() {
+        if (!state || !state.players || !state.players.length) return null;
+        return state.players[state.turnIndex % state.players.length];
+      }
+
+      function getMe() {
+        return getPlayer(clientId) || getCurrentPlayer();
+      }
+
+      function ownsFullSet(playerId, setKey) {
+        if (!setKey || !SET_META[setKey]) return false;
+        const setTiles = BOARD.filter((t) => t.set === setKey);
+        return setTiles.length > 0 && setTiles.every((t) => state.tiles[t.idx].ownerId === playerId);
+      }
+
+      function getSortedPlayerProperties(playerId) {
+        const owned = [];
+        BOARD.forEach((tile) => {
+          const ts = state.tiles[tile.idx];
+          if (ts && ts.ownerId === playerId) {
+            owned.push({ tile: tile, ts: ts });
+          }
+        });
+        owned.sort((a, b) => {
+          const sa = SET_ORDER.indexOf(a.tile.set);
+          const sb = SET_ORDER.indexOf(b.tile.set);
+          if (sa !== sb) return sa - sb;
+          return a.tile.idx - b.tile.idx;
+        });
+        return owned;
+      }
+
+      function canTradeProperty(tileIdx) {
+        const tile = BOARD[tileIdx];
+        const ts = state.tiles[tileIdx];
+        if (!tile || !ts || !ts.ownerId) return false;
+        if (tile.set) {
+          const sameSet = BOARD.filter((t) => t.set === tile.set);
+          if (sameSet.some((t) => state.tiles[t.idx].houses > 0)) return false;
+        }
+        return true;
+      }
+
+      function calculateRent(tileIdx, diceSum) {
+        const tile = BOARD[tileIdx];
+        const ts = state.tiles[tileIdx];
+        if (!tile || !ts || !ts.ownerId || ts.mortgaged) return 0;
+
+        if (tile.type === 'property') {
+          if (ts.houses > 0) return tile.rent[ts.houses] || 0;
+          const base = tile.rent[0] || 0;
+          return ownsFullSet(ts.ownerId, tile.set) ? base * 2 : base;
+        }
+        if (tile.type === 'railroad') {
+          const count = BOARD.filter((t) => t.type === 'railroad' && state.tiles[t.idx].ownerId === ts.ownerId).length;
+          return [0, 25, 50, 100, 200][count] || 25;
+        }
+        if (tile.type === 'utility') {
+          const count = BOARD.filter((t) => t.type === 'utility' && state.tiles[t.idx].ownerId === ts.ownerId).length;
+          return (diceSum || 7) * (count >= 2 ? 10 : 4);
+        }
+        return 0;
+      }
+
+      function sendToJail(p) {
+        p.pos = 10;
+        p.inJail = true;
+        p.jailTurns = 0;
+        state.doublesCount = 0;
+        state.hasRolled = true;
+        state.statusMessage = p.name + ' was sent to Jail!';
+        addLog(p.name + ' went to Jail.');
+      }
+
+      function resolveLanding(p, diceSum) {
+        const tile = BOARD[p.pos];
+        const ts = state.tiles[p.pos];
+        selectedTileIdx = p.pos;
+
+        if (tile.type === 'go') {
+          state.statusMessage = p.name + ' landed on GO.';
+        } else if (tile.type === 'jail') {
+          state.statusMessage = p.name + ' is just visiting Jail.';
+        } else if (tile.type === 'parking') {
+          if (state.freeParkingPool > 0) {
+            const won = state.freeParkingPool;
+            p.cash += won;
+            state.freeParkingPool = 0;
+            state.statusMessage = p.name + ' collected $' + won + ' from Free Parking!';
+            addLog(p.name + ' collected $' + won + ' Free Parking jackpot.');
+          } else {
+            state.statusMessage = p.name + ' rested on Free Parking.';
+          }
+        } else if (tile.type === 'gotojail') {
+          sendToJail(p);
+        } else if (tile.type === 'tax') {
+          p.cash -= tile.amount;
+          state.freeParkingPool += tile.amount;
+          state.statusMessage = p.name + ' paid $' + tile.amount + ' ' + tile.name + '.';
+          addLog(p.name + ' paid $' + tile.amount + ' (' + tile.name + ').');
+        } else if (tile.type === 'chance' || tile.type === 'chest') {
+          const deck = tile.type === 'chance' ? CHANCE_CARDS : CHEST_CARDS;
+          const card = deck[Math.floor(Math.random() * deck.length)];
+          addLog(p.name + ' drew ' + (tile.type === 'chance' ? 'Chance' : 'Community Chest') + ': "' + card.text + '"');
+          state.statusMessage = p.name + ': ' + card.text;
+          if (card.action === 'money') {
+            p.cash += card.amount;
+          } else if (card.action === 'parking_fine') {
+            p.cash -= card.amount;
+            state.freeParkingPool += card.amount;
+          } else if (card.action === 'jailcard') {
+            p.jailCards += 1;
+          } else if (card.action === 'jail') {
+            sendToJail(p);
+          } else if (card.action === 'goto') {
+            if (card.passGo && card.pos < p.pos) {
+              p.cash += 200;
+              addLog(p.name + ' passed GO and collected $200.');
+            }
+            p.pos = card.pos;
+            resolveLanding(p, diceSum);
+          } else if (card.action === 'back') {
+            movePlayer(p, -card.steps, diceSum);
+          } else if (card.action === 'pay_players') {
+            state.players.forEach((other) => {
+              if (other.id !== p.id && !other.bankrupt) {
+                p.cash -= card.amount;
+                other.cash += card.amount;
+              }
+            });
+          }
+        } else if (['property', 'railroad', 'utility'].includes(tile.type)) {
+          if (!ts.ownerId) {
+            state.statusMessage = p.name + ' landed on unowned ' + tile.name + ' ($' + tile.price + ').';
+          } else if (ts.ownerId !== p.id && !ts.mortgaged) {
+            const owner = getPlayer(ts.ownerId);
+            const rent = calculateRent(tile.idx, diceSum);
+            p.cash -= rent;
+            if (owner) owner.cash += rent;
+            state.statusMessage = p.name + ' paid $' + rent + ' rent to ' + (owner ? owner.name : 'owner') + ' for ' + tile.name + '.';
+            addLog(p.name + ' paid $' + rent + ' rent to ' + (owner ? owner.name : 'owner') + ' (' + tile.name + ').');
+          } else {
+            state.statusMessage = p.name + ' landed on ' + tile.name + '.';
+          }
+        }
+
+        if (p.cash < 0) {
+          p.bankrupt = true;
+          BOARD.forEach((t, i) => {
+            if (state.tiles[i].ownerId === p.id) {
+              state.tiles[i].ownerId = null;
+              state.tiles[i].houses = 0;
+              state.tiles[i].mortgaged = false;
+            }
+          });
+          addLog(p.name + ' went bankrupt!');
+          const alive = state.players.filter((pl) => !pl.bankrupt);
+          if (alive.length === 1) {
+            state.status = 'ended';
+            state.statusMessage = alive[0].name + ' wins the game!';
+            addLog('🏆 ' + alive[0].name + ' wins the match!');
+          }
+        }
+      }
+
+      function movePlayer(p, steps, diceSum) {
+        const oldPos = p.pos;
+        const nextPos = (oldPos + steps + 40) % 40;
+        if (steps > 0 && oldPos + steps >= 40) {
+          p.cash += 200;
+          addLog(p.name + ' passed GO and collected $200.');
+        }
+        p.pos = nextPos;
+        resolveLanding(p, diceSum);
+      }
+
+      function rollDiceAction() {
+        const p = getCurrentPlayer();
+        if (!p || p.bankrupt || state.hasRolled) return;
+
+        const d1 = Math.floor(Math.random() * 6) + 1;
+        const d2 = Math.floor(Math.random() * 6) + 1;
+        const sum = d1 + d2;
+        const isDouble = d1 === d2;
+        state.dice = [d1, d2];
+
+        if (p.inJail) {
+          if (isDouble) {
+            p.inJail = false;
+            p.jailTurns = 0;
+            addLog(p.name + ' rolled doubles (' + d1 + '+' + d2 + ') and escaped Jail!');
+          } else {
+            p.jailTurns += 1;
+            if (p.jailTurns >= 3) {
+              p.cash -= 50;
+              state.freeParkingPool += 50;
+              p.inJail = false;
+              p.jailTurns = 0;
+              addLog(p.name + ' paid $50 after 3 turns in Jail and rolled ' + sum + '.');
+            } else {
+              state.hasRolled = true;
+              state.statusMessage = p.name + ' rolled ' + d1 + '+' + d2 + ' and stays in Jail.';
+              addLog(p.name + ' stayed in Jail (roll ' + d1 + '+' + d2 + ').');
+              saveAndBroadcast();
+              return;
+            }
+          }
+        } else if (isDouble) {
+          state.doublesCount += 1;
+          if (state.doublesCount >= 3) {
+            sendToJail(p);
+            state.hasRolled = true;
+            saveAndBroadcast();
+            return;
+          }
+        }
+
+        state.hasRolled = !isDouble;
+        movePlayer(p, sum, sum);
+        saveAndBroadcast();
+      }
+
+      function buyCurrentProperty() {
+        const p = getCurrentPlayer();
+        if (!p || p.bankrupt) return;
+        const tile = BOARD[p.pos];
+        const ts = state.tiles[p.pos];
+        if (!tile || !['property', 'railroad', 'utility'].includes(tile.type)) return;
+        if (ts.ownerId || p.cash < tile.price) return;
+
+        p.cash -= tile.price;
+        ts.ownerId = p.id;
+        state.statusMessage = p.name + ' bought ' + tile.name + ' for $' + tile.price + '!';
+        addLog(p.name + ' bought ' + tile.name + ' for $' + tile.price + '.');
+        saveAndBroadcast();
+      }
+
+      function payJailFine() {
+        const p = getCurrentPlayer();
+        if (!p || !p.inJail || p.cash < 50) return;
+        p.cash -= 50;
+        state.freeParkingPool += 50;
+        p.inJail = false;
+        p.jailTurns = 0;
+        addLog(p.name + ' paid $50 to leave Jail.');
+        saveAndBroadcast();
+      }
+
+      function useJailCard() {
+        const p = getCurrentPlayer();
+        if (!p || !p.inJail || p.jailCards < 1) return;
+        p.jailCards -= 1;
+        p.inJail = false;
+        p.jailTurns = 0;
+        addLog(p.name + ' used a Get Out of Jail Free card.');
+        saveAndBroadcast();
+      }
+
+      function endTurnAction() {
+        if (!state || state.status !== 'playing') return;
+        state.hasRolled = false;
+        state.doublesCount = 0;
+        let next = (state.turnIndex + 1) % state.players.length;
+        let guard = 0;
+        while (state.players[next].bankrupt && guard < state.players.length) {
+          next = (next + 1) % state.players.length;
+          guard++;
+        }
+        state.turnIndex = next;
+        state.statusMessage = state.players[state.turnIndex].name + "'s turn.";
+        saveAndBroadcast();
+      }
+
+      function buyHouseAction(tileIdx) {
+        const p = getMe();
+        const tile = BOARD[tileIdx];
+        const ts = state.tiles[tileIdx];
+        if (!p || !tile || tile.type !== 'property' || ts.ownerId !== p.id || ts.mortgaged) return;
+        if (!ownsFullSet(p.id, tile.set) || ts.houses >= 5) return;
+        const cost = SET_META[tile.set].houseCost;
+        if (p.cash < cost) return;
+
+        p.cash -= cost;
+        ts.houses += 1;
+        addLog(p.name + ' built ' + (ts.houses === 5 ? 'a Hotel' : 'House #' + ts.houses) + ' on ' + tile.name + ' for $' + cost + '.');
+        saveAndBroadcast();
+      }
+
+      function toggleMortgageAction(tileIdx) {
+        const p = getMe();
+        const tile = BOARD[tileIdx];
+        const ts = state.tiles[tileIdx];
+        if (!p || !tile || ts.ownerId !== p.id) return;
+
+        if (!ts.mortgaged) {
+          if (ts.houses > 0) {
+            showToast('Sell buildings on this property before mortgaging.');
+            return;
+          }
+          ts.mortgaged = true;
+          p.cash += tile.mortgage;
+          addLog(p.name + ' mortgaged ' + tile.name + ' for $' + tile.mortgage + '.');
+        } else {
+          const unmortgageCost = Math.ceil(tile.mortgage * 1.1);
+          if (p.cash < unmortgageCost) {
+            showToast('Need $' + unmortgageCost + ' to unmortgage.');
+            return;
+          }
+          ts.mortgaged = false;
+          p.cash -= unmortgageCost;
+          addLog(p.name + ' unmortgaged ' + tile.name + ' for $' + unmortgageCost + '.');
+        }
+        saveAndBroadcast();
+      }
+
+      function openTradeModal(targetPlayerId) {
+        const me = getMe();
+        const other = getPlayer(targetPlayerId);
+        if (!me || !other || me.id === other.id || other.bankrupt) return;
+
+        activeTradeDraft = {
+          fromId: me.id,
+          toId: other.id,
+          offerProps: [],
+          requestProps: [],
+          offerCash: 0,
+          requestCash: 0,
+          offerJailCards: 0,
+          requestJailCards: 0
+        };
+        renderTradeModal();
+        const modal = $('tradeModal');
+        if (modal) modal.classList.remove('hidden');
+      }
+
+      function estimatePropertyValue(tileIdx, forPlayerId) {
+        const tile = BOARD[tileIdx];
+        const ts = state.tiles[tileIdx];
+        if (!tile) return 0;
+        let val = tile.price || 100;
+        if (tile.set) {
+          const setTiles = BOARD.filter((t) => t.set === tile.set);
+          const ownedInSet = setTiles.filter((t) => state.tiles[t.idx].ownerId === forPlayerId).length;
+          if (ownedInSet === setTiles.length - 1) val *= 1.85;
+          else if (ownedInSet > 0) val *= 1.25;
+        }
+        if (ts && ts.mortgaged) val *= 0.65;
+        return Math.round(val);
+      }
+
+      function evaluateBotTrade(bot, draft) {
+        const human = getPlayer(draft.fromId);
+        if (!bot || !human) return { decision: 'decline', reason: 'Invalid players.' };
+
+        let botGains = draft.requestCash + (draft.requestJailCards * 45);
+        let botGives = draft.offerCash + (draft.offerJailCards * 45);
+
+        draft.requestProps.forEach((idx) => { botGains += estimatePropertyValue(idx, bot.id); });
+        draft.offerProps.forEach((idx) => { botGives += estimatePropertyValue(idx, bot.id); });
+
+        if (botGives > bot.cash) {
+          return { decision: 'decline', reason: bot.name + " doesn't have enough cash ($" + bot.cash + ")." };
+        }
+
+        const ratio = botGives === 0 ? 999 : botGains / botGives;
+        if (ratio >= 0.98) {
+          return { decision: 'accept', reason: bot.name + ' accepted the trade!' };
+        }
+        if (ratio >= 0.78 && bot.cash >= 60) {
+          const counterCash = Math.max(10, Math.min(bot.cash, Math.round((botGains - botGives) * 0.65)));
+          return {
+            decision: 'counter',
+            counterCash: counterCash,
+            reason: bot.name + ' countered by adding $' + counterCash + ' cash.'
+          };
+        }
+        return { decision: 'decline', reason: bot.name + ' declined the offer as too one-sided.' };
+      }
+
+      function executeTrade(draft) {
+        const pFrom = getPlayer(draft.fromId);
+        const pTo = getPlayer(draft.toId);
+        if (!pFrom || !pTo) return;
+
+        if (pFrom.cash < draft.offerCash || pTo.cash < draft.requestCash) {
+          showToast('Insufficient cash for trade.');
+          return;
+        }
+
+        pFrom.cash -= draft.offerCash;
+        pTo.cash += draft.offerCash;
+        pTo.cash -= draft.requestCash;
+        pFrom.cash += draft.requestCash;
+
+        pFrom.jailCards -= draft.offerJailCards;
+        pTo.jailCards += draft.offerJailCards;
+        pTo.jailCards -= draft.requestJailCards;
+        pFrom.jailCards += draft.requestJailCards;
+
+        draft.offerProps.forEach((idx) => { state.tiles[idx].ownerId = pTo.id; });
+        draft.requestProps.forEach((idx) => { state.tiles[idx].ownerId = pFrom.id; });
+
+        addLog('🤝 Trade completed between ' + pFrom.name + ' and ' + pTo.name + '.');
+        state.statusMessage = 'Trade completed between ' + pFrom.name + ' and ' + pTo.name + '!';
+        activeTradeDraft = null;
+        const modal = $('tradeModal');
+        if (modal) modal.classList.add('hidden');
+        saveAndBroadcast();
+      }
+
+      function renderTradeModal() {
+        if (!activeTradeDraft || !state) return;
+        const me = getPlayer(activeTradeDraft.fromId);
+        const other = getPlayer(activeTradeDraft.toId);
+        if (!me || !other) return;
+
+        $('tradeModalTitle').textContent = 'Trade: ' + me.name + ' ↔ ' + other.name;
+        $('tradeModalSub').textContent = me.name + ' Cash: $' + me.cash + ' · ' + other.name + ' Cash: $' + other.cash;
+
+        const buildSideHtml = (player, propListKey, cashKey, cardKey, isOffer) => {
+          const grouped = getSortedPlayerProperties(player.id);
+          const bySet = {};
+          grouped.forEach((item) => {
+            const k = item.tile.set || 'other';
+            if (!bySet[k]) bySet[k] = [];
+            bySet[k].push(item);
+          });
+
+          let setsHtml = '';
+          SET_ORDER.forEach((setKey) => {
+            const list = bySet[setKey];
+            if (!list || !list.length) return;
+            const meta = SET_META[setKey];
+            setsHtml += `
+              <div class="set-group">
+                <div class="set-group-title">
+                  <span class="dot" style="background:${meta.color};"></span>
+                  ${meta.label}
+                </div>
+                ${list.map((entry) => {
+                  const tile = entry.tile;
+                  const ts = entry.ts;
+                  const checked = activeTradeDraft[propListKey].includes(tile.idx);
+                  const tradable = canTradeProperty(tile.idx);
+                  return `
+                    <label class="trade-prop-row">
+                      <span>
+                        <input type="checkbox" data-trade-prop="${propListKey}" value="${tile.idx}" ${checked ? 'checked' : ''} ${!tradable ? 'disabled' : ''} />
+                        <strong>${tile.name}</strong>
+                        ${ts.mortgaged ? '<span style="color:#fda4af; font-size:0.72rem;">(Mortgaged)</span>' : ''}
+                        ${!tradable ? '<span style="color:#fbbf24; font-size:0.72rem;">(Has Houses)</span>' : ''}
+                      </span>
+                      <span class="mono" style="color:var(--text-muted);">$${tile.price}</span>
+                    </label>
+                  `;
+                }).join('')}
+              </div>
+            `;
+          });
+
+          if (!setsHtml) {
+            setsHtml = '<div class="panel-desc" style="margin-top:8px;">No properties owned.</div>';
+          }
+
+          return `
+            <div class="trade-side">
+              <div style="display:flex; justify-content:space-between; align-items:center;">
+                <span style="display:inline-flex; align-items:center; gap:7px;">
+                  ${renderColorSwatch(player.colorId)}
+                  <strong>${player.name} ${isOffer ? '(You)' : '(Partner)'}</strong>
+                </span>
+                <span class="pill mono">Cash: $${player.cash}</span>
+              </div>
+              <div style="margin-top:10px;">
+                <label class="field-label">Cash to ${isOffer ? 'Send' : 'Request'} ($)</label>
+                <input id="tradeInput_${cashKey}" class="mono" type="number" min="0" max="${player.cash}" value="${activeTradeDraft[cashKey]}" style="width:100%;" />
+              </div>
+              <div style="margin-top:10px;">
+                <label class="field-label">Get Out of Jail Free Cards (Have: ${player.jailCards})</label>
+                <input id="tradeInput_${cardKey}" class="mono" type="number" min="0" max="${player.jailCards}" value="${activeTradeDraft[cardKey]}" style="width:100%;" />
+              </div>
+              ${setsHtml}
+            </div>
+          `;
+        };
+
+        $('tradeModalBody').innerHTML = `
+          <div class="trade-cols">
+            ${buildSideHtml(me, 'offerProps', 'offerCash', 'offerJailCards', true)}
+            ${buildSideHtml(other, 'requestProps', 'requestCash', 'requestJailCards', false)}
+          </div>
+          <div id="tradeEvalNote" class="status-banner" style="margin-top:12px; max-width:none;">
+            Select properties, cash, or Jail Free cards, then propose the deal.
+          </div>
+          <div class="action-grid" style="justify-content:flex-end; margin-top:12px;">
+            <button id="proposeTradeBtn" type="button" class="btn-gold">Propose Trade to ${other.name}</button>
+          </div>
+        `;
+
+        $('tradeModalBody').querySelectorAll('input[data-trade-prop]').forEach((cb) => {
+          cb.addEventListener('change', () => {
+            const key = cb.getAttribute('data-trade-prop');
+            const idx = Number(cb.value);
+            if (cb.checked) {
+              if (!activeTradeDraft[key].includes(idx)) activeTradeDraft[key].push(idx);
+            } else {
+              activeTradeDraft[key] = activeTradeDraft[key].filter((x) => x !== idx);
+            }
+          });
+        });
+
+        const syncTradeInputs = () => {
+          activeTradeDraft.offerCash = Math.max(0, Math.min(me.cash, Number($('tradeInput_offerCash').value) || 0));
+          activeTradeDraft.requestCash = Math.max(0, Math.min(other.cash, Number($('tradeInput_requestCash').value) || 0));
+          activeTradeDraft.offerJailCards = Math.max(0, Math.min(me.jailCards, Number($('tradeInput_offerJailCards').value) || 0));
+          activeTradeDraft.requestJailCards = Math.max(0, Math.min(other.jailCards, Number($('tradeInput_requestJailCards').value) || 0));
+        };
+
+        $('proposeTradeBtn').addEventListener('click', () => {
+          syncTradeInputs();
+          if (other.isBot) {
+            const evalRes = evaluateBotTrade(other, activeTradeDraft);
+            if (evalRes.decision === 'accept') {
+              executeTrade(activeTradeDraft);
+            } else if (evalRes.decision === 'counter') {
+              activeTradeDraft.offerCash = Math.min(me.cash, activeTradeDraft.offerCash + evalRes.counterCash);
+              renderTradeModal();
+              const note = $('tradeEvalNote');
+              if (note) note.textContent = evalRes.reason + ' Offer updated to $' + activeTradeDraft.offerCash + ' cash.';
+            } else {
+              const note = $('tradeEvalNote');
+              if (note) note.textContent = evalRes.reason;
+              addLog(evalRes.reason);
+              saveAndBroadcast();
+            }
+          } else {
+            executeTrade(activeTradeDraft);
+          }
+        });
+      }
+
+      function scheduleBotIfNeeded() {
+        clearTimeout(botTimer);
+        if (!state || state.status !== 'playing') return;
+        const p = getCurrentPlayer();
+        if (!p || !p.isBot || p.bankrupt) return;
+
+        botTimer = setTimeout(() => {
+          if (!state || state.status !== 'playing') return;
+          const cur = getCurrentPlayer();
+          if (!cur || !cur.isBot || cur.bankrupt) return;
+
+          if (!state.hasRolled) {
+            if (cur.inJail && cur.jailCards > 0) {
+              useJailCard();
+              return;
+            }
+            if (cur.inJail && cur.cash >= 250) {
+              payJailFine();
+              return;
+            }
+            rollDiceAction();
+            return;
+          }
+
+          const tile = BOARD[cur.pos];
+          const ts = state.tiles[cur.pos];
+          if (tile && ['property', 'railroad', 'utility'].includes(tile.type) && !ts.ownerId && cur.cash >= tile.price + 120) {
+            buyCurrentProperty();
+            return;
+          }
+
+          endTurnAction();
+        }, 700);
+      }
+
+      function renderDie(el, val) {
+        if (!el) return;
+        const pipMap = {
+          1: [4],
+          2: [2, 6],
+          3: [2, 4, 6],
+          4: [0, 2, 6, 8],
+          5: [0, 2, 4, 6, 8],
+          6: [0, 2, 3, 5, 6, 8]
+        };
+        const active = new Set(pipMap[val] || [4]);
+        let html = '';
+        for (let i = 0; i < 9; i++) {
+          html += '<span class="die-pip" style="opacity:' + (active.has(i) ? 1 : 0) + ';"></span>';
+        }
+        el.innerHTML = html;
+      }
+
+      function tileGridPosition(idx) {
+        if (idx === 0) return { row: 11, col: 11, corner: true };
+        if (idx > 0 && idx < 10) return { row: 11, col: 11 - idx, corner: false };
+        if (idx === 10) return { row: 11, col: 1, corner: true };
+        if (idx > 10 && idx < 20) return { row: 11 - (idx - 10), col: 1, corner: false };
+        if (idx === 20) return { row: 1, col: 1, corner: true };
+        if (idx > 20 && idx < 30) return { row: 1, col: 1 + (idx - 20), corner: false };
+        if (idx === 30) return { row: 1, col: 11, corner: true };
+        return { row: 1 + (idx - 30), col: 11, corner: false };
+      }
+
+      function renderLobby() {
+        const nameInput = $('playerNameInput');
+        if (nameInput && !nameInput.value) {
+          nameInput.value = safeGetStorage('monopoly_saved_name') || 'Player 1';
+        }
+        const myColor = safeGetStorage('monopoly_saved_color') || 'crimson';
+
+        const takenColors = new Map();
+        if (state && state.players) {
+          state.players.forEach((p) => {
+            if (p.id !== clientId) takenColors.set(p.colorId, p.name);
+          });
+        }
+
+        const colorGrid = $('colorGrid');
+        if (colorGrid) {
+          colorGrid.innerHTML = PLAYER_COLORS.map((c) => {
+            const isSel = c.id === myColor;
+            const isTaken = takenColors.has(c.id);
+            return `
+              <button type="button" class="color-btn ${isSel ? 'selected' : ''} ${isTaken ? 'taken' : ''}" data-pick-color="${c.id}">
+                <span class="color-swatch" style="background:${c.hex};"></span>
+                <span class="color-name">${c.label}</span>
+              </button>
+            `;
+          }).join('');
+
+          colorGrid.querySelectorAll('[data-pick-color]').forEach((btn) => {
+            btn.addEventListener('click', () => {
+              const colId = btn.getAttribute('data-pick-color');
+              safeSetStorage('monopoly_saved_color', colId);
+              if (state) {
+                const me = state.players.find((p) => p.id === clientId);
+                if (me) {
+                  me.colorId = colId;
+                  saveAndBroadcast();
+                }
+              }
+              renderLobby();
+            });
+          });
+        }
+
+        if (state && state.code) {
+          const url = getInviteUrl(state.code);
+          $('lobbyInviteBox')?.classList.remove('hidden');
+          if ($('lobbyInviteUrl')) $('lobbyInviteUrl').textContent = url;
+          $('copyLinkBtn')?.classList.remove('hidden');
+          $('leaveBtn')?.classList.remove('hidden');
+          $('roomRosterPanel')?.classList.remove('hidden');
+          if ($('rosterRoomCode')) $('rosterRoomCode').textContent = state.code;
+          if ($('roomPill')) $('roomPill').textContent = 'ROOM: ' + state.code;
+
+          if ($('seatList')) {
+            $('seatList').innerHTML = state.players.map((p) => {
+              const col = getColorObj(p.colorId);
+              return `
+                <div class="seat-item">
+                  <div class="seat-left">
+                    ${renderColorSwatch(p.colorId)}
+                    <div>
+                      <strong>${p.name}</strong>
+                      <span class="pill" style="margin-left:6px; color:${col.hex}; border-color:${col.hex};">${col.label}</span>
+                      <span class="pill" style="margin-left:4px;">${p.isBot ? 'AI Bot' : 'Human'}</span>
+                    </div>
+                  </div>
+                  <span class="mono" style="color:var(--emerald);">$${p.cash}</span>
+                </div>
+              `;
+            }).join('');
+          }
+
+          if ($('startMatchBtn')) $('startMatchBtn').disabled = state.players.length < 2;
+          if ($('addBotBtn')) $('addBotBtn').disabled = state.players.length >= 6;
+        } else {
+          $('lobbyInviteBox')?.classList.add('hidden');
+          $('copyLinkBtn')?.classList.add('hidden');
+          $('leaveBtn')?.classList.add('hidden');
+          $('roomRosterPanel')?.classList.add('hidden');
+          if ($('roomPill')) $('roomPill').textContent = 'ROOM: ----';
+        }
+      }
+
+      function renderBoard() {
+        const grid = $('boardGrid');
+        if (!grid || !state) return;
+
+        let html = `
+          <div class="board-center">
+            <div class="center-title">MONOPOLY</div>
+            <div class="dice-stage">
+              <div id="dieA" class="die-face"></div>
+              <div id="dieB" class="die-face"></div>
+            </div>
+            <div id="centerStatus" class="status-banner">${state.statusMessage || ''}</div>
+          </div>
+        `;
+
+        BOARD.forEach((tile) => {
+          const pos = tileGridPosition(tile.idx);
+          const ts = state.tiles[tile.idx];
+          const owner = ts.ownerId ? getPlayer(ts.ownerId) : null;
+          const ownerColor = owner ? getColorObj(owner.colorId).hex : null;
+          const playersHere = state.players.filter((p) => !p.bankrupt && p.pos === tile.idx);
+          const setMeta = tile.set ? SET_META[tile.set] : null;
+
+          let housesHtml = '';
+          if (ts.houses === 5) {
+            housesHtml = '<div class="houses-row"><span class="hotel-pip"></span></div>';
+          } else if (ts.houses > 0) {
+            housesHtml = '<div class="houses-row">' + Array.from({ length: ts.houses }).map(() => '<span class="house-pip"></span>').join('') + '</div>';
+          }
+
+          const isSelected = selectedTileIdx === tile.idx;
+          const outlineStyle = ownerColor
+            ? 'box-shadow: inset 0 0 0 2.5px ' + ownerColor + ';'
+            : '';
+
+          html += `
+            <div class="tile ${pos.corner ? 'tile-corner' : ''} ${isSelected ? 'selected-tile' : ''}"
+                 data-tile-idx="${tile.idx}"
+                 style="grid-row:${pos.row}; grid-column:${pos.col}; ${outlineStyle}">
+              ${setMeta ? '<div class="color-bar" style="background:' + setMeta.color + ';"></div>' : ''}
+              ${housesHtml}
+              ${ts.mortgaged ? '<span class="mortgaged-badge">M</span>' : ''}
+              <div class="tile-name">${tile.name}</div>
+              ${tile.price ? '<div class="tile-price">$' + tile.price + '</div>' : ''}
+              <div class="tokens-layer">
+                ${playersHere.map((pl) => '<span class="board-marker" style="background:' + getColorObj(pl.colorId).hex + ';" title="' + pl.name + '"></span>').join('')}
+              </div>
+            </div>
+          `;
+        });
+
+        grid.innerHTML = html;
+        renderDie($('dieA'), (state.dice && state.dice[0]) || 1);
+        renderDie($('dieB'), (state.dice && state.dice[1]) || 1);
+
+        grid.querySelectorAll('[data-tile-idx]').forEach((el) => {
+          el.addEventListener('click', () => {
+            selectedTileIdx = Number(el.getAttribute('data-tile-idx'));
+            renderBoard();
+            renderInspector();
+          });
+        });
+      }
+
+      function renderTurnControls() {
+        const cur = getCurrentPlayer();
+        const me = getMe();
+        if (!cur || !me) return;
+
+        const curCol = getColorObj(cur.colorId);
+        if ($('potAmount')) $('potAmount').textContent = state.freeParkingPool || 0;
+        if ($('turnHeading')) {
+          $('turnHeading').innerHTML = renderColorSwatch(cur.colorId) + ' <span style="vertical-align:middle;">' + cur.name + "'s Turn</span>";
+        }
+        if ($('turnSub')) {
+          $('turnSub').textContent = state.status === 'ended'
+            ? 'Match complete!'
+            : (cur.isBot ? 'AI Bot (' + curCol.label + ') thinking...' : 'Color: ' + curCol.label);
+        }
+
+        const canAct = state.status === 'playing' && !cur.isBot && !cur.bankrupt;
+        const curTile = BOARD[cur.pos];
+        const curTileState = state.tiles[cur.pos];
+        const canBuy = canAct &&
+          ['property', 'railroad', 'utility'].includes(curTile.type) &&
+          !curTileState.ownerId &&
+          cur.cash >= curTile.price;
+
+        let btns = `
+          <button id="actRoll" type="button" class="btn-primary" ${!canAct || state.hasRolled ? 'disabled' : ''}>Roll Dice</button>
+          <button id="actBuy" type="button" class="btn-gold" ${!canBuy ? 'disabled' : ''}>Buy ${curTile.name} ($${curTile.price || 0})</button>
+          <button id="actEnd" type="button" ${!canAct || !state.hasRolled ? 'disabled' : ''}>End Turn</button>
+        `;
+
+        if (canAct && cur.inJail) {
+          btns += '<button id="actJailFine" type="button" class="btn-sm" ' + (cur.cash < 50 ? 'disabled' : '') + '>Pay $50 Jail Fine</button>';
+          if (cur.jailCards > 0) {
+            btns += '<button id="actJailCard" type="button" class="btn-sm">Use Jail Card (' + cur.jailCards + ')</button>';
+          }
+        }
+
+        if ($('actionButtons')) {
+          $('actionButtons').innerHTML = btns;
+          $('actRoll')?.addEventListener('click', rollDiceAction);
+          $('actBuy')?.addEventListener('click', buyCurrentProperty);
+          $('actEnd')?.addEventListener('click', endTurnAction);
+          $('actJailFine')?.addEventListener('click', payJailFine);
+          $('actJailCard')?.addEventListener('click', useJailCard);
+        }
+      }
+
+      function renderPlayersAndSelection() {
+        const cur = getCurrentPlayer();
+        const me = getMe();
+        const listEl = $('playersList');
+        if (!listEl) return;
+
+        listEl.innerHTML = state.players.map((p) => {
+          const isTurn = cur && cur.id === p.id;
+          const isSelected = selectedPlayerId === p.id;
+          return `
+            <div class="player-card ${isTurn ? 'active-turn' : ''} ${isSelected ? 'selected-player' : ''} ${p.bankrupt ? 'bankrupt' : ''}">
+              <div class="player-top">
+                <button type="button" class="player-name-btn" data-select-player="${p.id}">
+                  ${renderColorSwatch(p.colorId)}
+                  <span>${p.name}</span>
+                  ${p.isBot ? '<span class="pill" style="padding:2px 7px; font-size:0.68rem;">BOT</span>' : ''}
+                  ${p.inJail ? '<span class="pill" style="padding:2px 7px; font-size:0.68rem; color:#fda4af;">JAIL</span>' : ''}
+                </button>
+                <span class="mono" style="font-weight:700; color:#6ee7b7;">$${p.cash}</span>
+              </div>
+              <div style="font-size:0.75rem; color:var(--text-muted); margin-top:4px;">
+                Tile: ${(BOARD[p.pos] && BOARD[p.pos].name) || 'GO'} · Cards: ${p.jailCards}
+              </div>
+            </div>
+          `;
+        }).join('');
+
+        listEl.querySelectorAll('[data-select-player]').forEach((btn) => {
+          btn.addEventListener('click', () => {
+            const pid = btn.getAttribute('data-select-player');
+            selectedPlayerId = selectedPlayerId === pid ? null : pid;
+            renderPlayersAndSelection();
+          });
+        });
+
+        const box = $('selectedPlayerBox');
+        const target = selectedPlayerId ? getPlayer(selectedPlayerId) : null;
+        if (!box) return;
+
+        if (!target) {
+          box.classList.add('hidden');
+          box.innerHTML = '';
+          return;
+        }
+
+        const sortedProps = getSortedPlayerProperties(target.id);
+        const canTradeWithTarget = me && target.id !== me.id && !target.bankrupt && state.status === 'playing';
+
+        box.classList.remove('hidden');
+        box.innerHTML = `
+          <div style="display:flex; align-items:center; justify-content:space-between; gap:8px;">
+            <div style="display:inline-flex; align-items:center; gap:7px;">
+              ${renderColorSwatch(target.colorId)}
+              <strong>${target.name}</strong>
+              <span class="mono" style="margin-left:4px; color:#fcd34d;">$${target.cash}</span>
+            </div>
+            <button id="tradeWithSelectedBtn" type="button" class="btn-sm btn-gold" ${!canTradeWithTarget ? 'disabled' : ''}>
+              Trade with ${target.name}
+            </button>
+          </div>
+          <div style="font-size:0.74rem; color:var(--text-muted); margin-top:8px;">
+            Properties (${sortedProps.length}, sorted by set):
+          </div>
+          <div class="deed-chips">
+            ${sortedProps.length ? sortedProps.map((entry) => {
+              const col = entry.tile.set && SET_META[entry.tile.set] ? SET_META[entry.tile.set].color : 'var(--emerald)';
+              return '<span class="deed-chip"><span class="dot" style="background:' + col + ';"></span>' + entry.tile.name + (entry.ts.mortgaged ? ' (M)' : '') + '</span>';
+            }).join('') : '<span class="panel-desc" style="margin:0;">None</span>'}
+          </div>
+        `;
+
+        $('tradeWithSelectedBtn')?.addEventListener('click', () => openTradeModal(target.id));
+      }
+
+      function renderInspector() {
+        const body = $('tileInspectorBody');
+        const tile = BOARD[selectedTileIdx];
+        const ts = state && state.tiles ? state.tiles[selectedTileIdx] : null;
+        const me = getMe();
+        if (!body || !tile || !ts) return;
+
+        const owner = ts.ownerId ? getPlayer(ts.ownerId) : null;
+        const setMeta = tile.set ? SET_META[tile.set] : null;
+        let extra = '';
+
+        if (tile.type === 'property') {
+          const canBuild = me && ts.ownerId === me.id && !ts.mortgaged && ownsFullSet(me.id, tile.set) && ts.houses < 5 && me.cash >= setMeta.houseCost;
+          extra = `
+            <div style="font-size:0.8rem; margin-top:6px;">
+              Base Rent: $${tile.rent[0]} · Set Bonus: $${tile.rent[0] * 2} · 1H: $${tile.rent[1]} · Hotel: $${tile.rent[5]}<br/>
+              Houses/Hotel: ${ts.houses === 5 ? 'Hotel' : ts.houses} · House Cost: $${setMeta.houseCost}
+            </div>
+            <div class="action-grid">
+              <button id="inspBuildBtn" type="button" class="btn-sm btn-primary" ${!canBuild ? 'disabled' : ''}>Build House ($${setMeta.houseCost})</button>
+              ${me && ts.ownerId === me.id ? '<button id="inspMortBtn" type="button" class="btn-sm">' + (ts.mortgaged ? 'Unmortgage ($' + Math.ceil(tile.mortgage * 1.1) + ')' : 'Mortgage (+$' + tile.mortgage + ')') + '</button>' : ''}
+            </div>
+          `;
+        } else if (tile.type === 'railroad' || tile.type === 'utility') {
+          extra = `
+            <div style="font-size:0.8rem; margin-top:6px;">
+              Price: $${tile.price} · Mortgage Value: $${tile.mortgage}
+            </div>
+            ${me && ts.ownerId === me.id ? '<div class="action-grid"><button id="inspMortBtn" type="button" class="btn-sm">' + (ts.mortgaged ? 'Unmortgage ($' + Math.ceil(tile.mortgage * 1.1) + ')' : 'Mortgage (+$' + tile.mortgage + ')') + '</button></div>' : ''}
+          `;
+        }
+
+        body.innerHTML = `
+          <div style="display:flex; align-items:center; gap:8px; margin-bottom:4px;">
+            ${setMeta ? '<span class="dot" style="background:' + setMeta.color + '; width:12px; height:12px;"></span>' : ''}
+            <strong style="color:var(--text-main);">${tile.name}</strong>
+          </div>
+          <div style="font-size:0.8rem; display:flex; align-items:center; gap:6px;">
+            <span>Owner:</span>
+            ${owner ? renderColorSwatch(owner.colorId) + '<span>' + owner.name + (ts.mortgaged ? ' (Mortgaged)' : '') + '</span>' : '<span>Unowned</span>'}
+          </div>
+          ${extra}
+        `;
+
+        $('inspBuildBtn')?.addEventListener('click', () => buyHouseAction(tile.idx));
+        $('inspMortBtn')?.addEventListener('click', () => toggleMortgageAction(tile.idx));
+      }
+
+      function renderLogs() {
+        const logEl = $('gameLog');
+        if (!logEl || !state) return;
+        logEl.innerHTML = (state.logs || [])
+          .map((entry) => '<div class="log-entry">' + entry + '</div>')
+          .join('');
+      }
+
+      function renderAll() {
+        if (!state || state.status === 'lobby') {
+          $('lobbyView')?.classList.remove('hidden');
+          $('gameView')?.classList.add('hidden');
+          renderLobby();
+          return;
+        }
+
+        $('lobbyView')?.classList.add('hidden');
+        $('gameView')?.classList.remove('hidden');
+        $('copyLinkBtn')?.classList.remove('hidden');
+        $('leaveBtn')?.classList.remove('hidden');
+        if ($('roomPill')) $('roomPill').textContent = 'ROOM: ' + state.code;
+
+        renderBoard();
+        renderTurnControls();
+        renderPlayersAndSelection();
+        renderInspector();
+        renderLogs();
+      }
+
+      function handleCreateRoom() {
+        const name = ($('playerNameInput')?.value || '').trim() || 'Player 1';
+        const colorId = safeGetStorage('monopoly_saved_color') || 'crimson';
+        const code = randomCode(6);
+        state = createFreshRoom(code, name, colorId);
+        saveAndBroadcast();
+        setupSyncForRoom(code, true);
+        showToast('Created room ' + code);
+      }
+
+      function handleJoinRoom() {
+        const code = ($('joinCodeInput')?.value || '').trim().toUpperCase();
+        if (!code) {
+          showToast('Enter a room code first.');
+          return;
+        }
+        const name = ($('playerNameInput')?.value || '').trim() || 'Player';
+        const colorId = safeGetStorage('monopoly_saved_color') || 'cobalt';
+        connectAsGuest(code, name, colorId);
+        showToast('Joined room ' + code);
+      }
+
+      function bindEvents() {
+        $('playerNameInput')?.addEventListener('input', (e) => {
+          const val = e.target.value.trim();
+          safeSetStorage('monopoly_saved_name', val);
+          if (state && state.players) {
+            const me = state.players.find((p) => p.id === clientId);
+            if (me && val) {
+              me.name = val;
+              saveAndBroadcast();
+            }
+          }
+        });
+
+        $('createRoomBtn')?.addEventListener('click', handleCreateRoom);
+        $('joinRoomBtn')?.addEventListener('click', handleJoinRoom);
+
+        $('addBotBtn')?.addEventListener('click', () => {
+          if (!state || state.players.length >= 6) return;
+          const used = new Set(state.players.map((p) => p.colorId));
+          const col = PLAYER_COLORS.find((c) => !used.has(c.id)) || PLAYER_COLORS[0];
+          const botIndex = state.players.filter((p) => p.isBot).length + 1;
+          state.players.push({
+            id: 'bot_' + Math.random().toString(36).slice(2, 8),
+            name: 'Bot ' + botIndex,
+            colorId: col.id,
+            isBot: true,
+            cash: 1500,
+            pos: 0,
+            inJail: false,
+            jailTurns: 0,
+            jailCards: 0,
+            bankrupt: false
+          });
+          addLog('Added AI Bot ' + botIndex + ' (' + col.label + ').');
+          saveAndBroadcast();
+        });
+
+        $('startMatchBtn')?.addEventListener('click', () => {
+          if (!state || state.players.length < 2) return;
+          state.status = 'playing';
+          state.turnIndex = 0;
+          state.hasRolled = false;
+          state.statusMessage = state.players[0].name + "'s turn to roll!";
+          addLog('Match started!');
+          saveAndBroadcast();
+        });
+
+        const copyInvite = () => {
+          if (!state || !state.code) return;
+          const url = getInviteUrl(state.code);
+          if (navigator.clipboard && navigator.clipboard.writeText) {
+            navigator.clipboard.writeText(url).then(
+              () => showToast('Invite link copied!'),
+              () => showToast(url)
+            );
+          } else {
+            showToast(url);
+          }
+        };
+
+        $('copyLinkBtn')?.addEventListener('click', copyInvite);
+        $('lobbyCopyBtn')?.addEventListener('click', copyInvite);
+
+        $('leaveBtn')?.addEventListener('click', () => {
+          state = null;
+          selectedPlayerId = null;
+          $('copyLinkBtn')?.classList.add('hidden');
+          $('leaveBtn')?.classList.add('hidden');
+          renderAll();
+        });
+
+        $('closeTradeBtn')?.addEventListener('click', () => {
+          activeTradeDraft = null;
+          $('tradeModal')?.classList.add('hidden');
+        });
+      }
+
+      function init() {
+        bindEvents();
+        renderLobby();
+
+        try {
+          const params = new URLSearchParams(window.location.search);
+          const roomParam = (params.get('room') || '').trim().toUpperCase();
+          if (roomParam) {
+            if ($('joinCodeInput')) $('joinCodeInput').value = roomParam;
+            const name = safeGetStorage('monopoly_saved_name') || 'Player';
+            const colorId = safeGetStorage('monopoly_saved_color') || 'cobalt';
+            connectAsGuest(roomParam, name, colorId);
+          }
+        } catch (_) {}
+      }
+
+      if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', init);
+      } else {
+        init();
+      }
+    })();
+  </script>
+</body>
+</html>
