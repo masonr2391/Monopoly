@@ -151,6 +151,7 @@
       border-color: var(--emerald);
     }
 
+    /* Top Header */
     .topbar {
       display: flex;
       flex-wrap: wrap;
@@ -228,6 +229,7 @@
       background: rgba(245, 158, 11, 0.1);
     }
 
+    /* Lobby */
     .lobby-wrap {
       max-width: 1040px;
       margin: 24px auto;
@@ -373,6 +375,7 @@
       gap: 10px;
     }
 
+    /* Game Workspace */
     .game-wrap {
       max-width: 1480px;
       margin: 0 auto;
@@ -703,6 +706,7 @@
       border-left: 2px solid var(--border-strong);
     }
 
+    /* Modals */
     .modal-backdrop {
       position: fixed;
       inset: 0;
@@ -805,8 +809,8 @@
     <div class="topbar-right">
       <span id="roomPill" class="pill mono">ROOM: ----</span>
       <span id="syncPill" class="pill pill-live">● Ready</span>
-      <button id="copyLinkBtn" class="btn-sm btn-ghost hidden">Copy Invite Link</button>
-      <button id="leaveBtn" class="btn-sm btn-danger hidden">Leave Room</button>
+      <button id="copyLinkBtn" type="button" class="btn-sm btn-ghost hidden">Copy Invite Link</button>
+      <button id="leaveBtn" type="button" class="btn-sm btn-danger hidden">Leave Room</button>
     </div>
   </header>
 
@@ -897,6 +901,19 @@
       </div>
     </aside>
   </main>
+
+  <div id="propertyModal" class="modal-backdrop hidden">
+    <div class="modal-card" style="max-width:460px;">
+      <div class="modal-header">
+        <div>
+          <div id="propModalTitle" class="panel-title" style="font-size:1.15rem;">Property</div>
+          <div id="propModalSub" class="panel-desc" style="margin-bottom:0;"></div>
+        </div>
+        <button id="closePropBtn" type="button" class="btn-sm btn-ghost">✕ Close</button>
+      </div>
+      <div id="propModalBody"></div>
+    </div>
+  </div>
 
   <div id="tradeModal" class="modal-backdrop hidden">
     <div class="modal-card">
@@ -1019,6 +1036,7 @@
       const clientId = 'p_' + Math.random().toString(36).slice(2, 10);
       let state = null;
       let selectedTileIdx = 1;
+      let inspectedTileIdx = null;
       let selectedPlayerId = null;
       let activeTradeDraft = null;
       let peer = null;
@@ -1629,6 +1647,114 @@
         saveAndBroadcast();
       }
 
+      // Centered Property Popup Modal
+      function openPropertyModal(tileIdx) {
+        inspectedTileIdx = tileIdx;
+        renderPropertyModal();
+        const modal = $('propertyModal');
+        if (modal) modal.classList.remove('hidden');
+      }
+
+      function renderPropertyModal() {
+        if (inspectedTileIdx === null || !state) return;
+        const tile = BOARD[inspectedTileIdx];
+        const ts = state.tiles[inspectedTileIdx];
+        const me = getMe();
+        if (!tile || !ts) return;
+
+        const owner = ts.ownerId ? getPlayer(ts.ownerId) : null;
+        const setMeta = tile.set ? SET_META[tile.set] : null;
+        const isOwner = Boolean(me && ts.ownerId === me.id && !me.bankrupt);
+
+        $('propModalTitle').innerHTML =
+          (setMeta ? '<span class="dot" style="background:' + setMeta.color + '; width:11px; height:11px; margin-right:6px;"></span>' : '') +
+          tile.name;
+
+        $('propModalSub').innerHTML = owner
+          ? 'Owner: ' + renderColorSwatch(owner.colorId) + ' <strong>' + owner.name + '</strong>' + (ts.mortgaged ? ' <span style="color:#fda4af;">(Mortgaged)</span>' : '')
+          : 'Unowned';
+
+        let rentTableHtml = '';
+        if (tile.type === 'property' && Array.isArray(tile.rent)) {
+          rentTableHtml = `
+            <div style="background:var(--bg-card); border:1px solid var(--border); border-radius:12px; padding:12px; margin-bottom:12px; font-size:0.86rem;">
+              <div style="display:flex; justify-content:space-between; padding:4px 0; border-bottom:1px solid var(--border);">
+                <span>Base Rent</span>
+                <strong class="mono">$${tile.rent[0]}</strong>
+              </div>
+              <div style="display:flex; justify-content:space-between; padding:4px 0; border-bottom:1px solid var(--border);">
+                <span>1 House</span>
+                <strong class="mono">$${tile.rent[1]}</strong>
+              </div>
+              <div style="display:flex; justify-content:space-between; padding:4px 0; border-bottom:1px solid var(--border);">
+                <span>2 Houses</span>
+                <strong class="mono">$${tile.rent[2]}</strong>
+              </div>
+              <div style="display:flex; justify-content:space-between; padding:4px 0; border-bottom:1px solid var(--border);">
+                <span>3 Houses</span>
+                <strong class="mono">$${tile.rent[3]}</strong>
+              </div>
+              <div style="display:flex; justify-content:space-between; padding:4px 0;">
+                <span>Hotel</span>
+                <strong class="mono">$${tile.rent[5]}</strong>
+              </div>
+            </div>
+          `;
+        } else {
+          rentTableHtml = `
+            <div style="background:var(--bg-card); border:1px solid var(--border); border-radius:12px; padding:12px; margin-bottom:12px; font-size:0.86rem;">
+              <div>Purchase Price: <strong class="mono">$${tile.price || 0}</strong></div>
+              <div style="margin-top:4px;">Mortgage Value: <strong class="mono">$${tile.mortgage || 0}</strong></div>
+            </div>
+          `;
+        }
+
+        const houseCost = (setMeta && setMeta.houseCost) || 0;
+        const canBuild =
+          isOwner &&
+          tile.type === 'property' &&
+          !ts.mortgaged &&
+          ownsFullSet(me.id, tile.set) &&
+          ts.houses < 5 &&
+          me.cash >= houseCost;
+
+        const canMortgage =
+          isOwner &&
+          ['property', 'railroad', 'utility'].includes(tile.type) &&
+          (ts.mortgaged ? me.cash >= Math.ceil(tile.mortgage * 1.1) : ts.houses === 0);
+
+        const buildLabel =
+          tile.type === 'property'
+            ? (ts.houses >= 5 ? 'Maxed (Hotel)' : 'Build House ($' + houseCost + ')')
+            : 'Build House (N/A)';
+
+        const mortgageLabel = ts.mortgaged
+          ? 'Unmortgage ($' + Math.ceil((tile.mortgage || 0) * 1.1) + ')'
+          : 'Mortgage (+$' + (tile.mortgage || 0) + ')';
+
+        $('propModalBody').innerHTML = `
+          ${rentTableHtml}
+          <div style="font-size:0.78rem; color:var(--text-muted); margin-bottom:10px;">
+            ${isOwner ? 'You own this property.' : 'Only the owner can build or mortgage this property.'}
+          </div>
+          <div class="action-grid" style="margin-top:0;">
+            <button id="modalBuildBtn" type="button" class="btn-primary" ${canBuild ? '' : 'disabled'}>${buildLabel}</button>
+            <button id="modalMortgageBtn" type="button" class="btn-gold" ${canMortgage ? '' : 'disabled'}>${mortgageLabel}</button>
+          </div>
+        `;
+
+        $('modalBuildBtn')?.addEventListener('click', () => {
+          buyHouseAction(tile.idx);
+          renderPropertyModal();
+        });
+
+        $('modalMortgageBtn')?.addEventListener('click', () => {
+          toggleMortgageAction(tile.idx);
+          renderPropertyModal();
+        });
+      }
+
+      // Trading & AI Evaluation
       function openTradeModal(targetPlayerId) {
         const me = getMe();
         const other = getPlayer(targetPlayerId);
@@ -2059,9 +2185,11 @@
 
         grid.querySelectorAll('[data-tile-idx]').forEach((el) => {
           el.addEventListener('click', () => {
-            selectedTileIdx = Number(el.getAttribute('data-tile-idx'));
+            const idx = Number(el.getAttribute('data-tile-idx'));
+            selectedTileIdx = idx;
             renderBoard();
             renderInspector();
+            openPropertyModal(idx);
           });
         });
       }
@@ -2202,7 +2330,7 @@
           const canBuild = me && ts.ownerId === me.id && !ts.mortgaged && ownsFullSet(me.id, tile.set) && ts.houses < 5 && me.cash >= setMeta.houseCost;
           extra = `
             <div style="font-size:0.8rem; margin-top:6px;">
-              Base Rent: $${tile.rent[0]} · Set Bonus: $${tile.rent[0] * 2} · 1H: $${tile.rent[1]} · Hotel: $${tile.rent[5]}<br/>
+              Base Rent: $${tile.rent[0]} · 1H: $${tile.rent[1]} · 2H: $${tile.rent[2]} · 3H: $${tile.rent[3]} · Hotel: $${tile.rent[5]}<br/>
               Houses/Hotel: ${ts.houses === 5 ? 'Hotel' : ts.houses} · House Cost: $${setMeta.houseCost}
             </div>
             <div class="action-grid">
@@ -2262,6 +2390,9 @@
         renderPlayersAndSelection();
         renderInspector();
         renderLogs();
+        if (inspectedTileIdx !== null && !$('propertyModal')?.classList.contains('hidden')) {
+          renderPropertyModal();
+        }
       }
 
       function handleCreateRoom() {
@@ -2352,9 +2483,23 @@
         $('leaveBtn')?.addEventListener('click', () => {
           state = null;
           selectedPlayerId = null;
+          inspectedTileIdx = null;
           $('copyLinkBtn')?.classList.add('hidden');
           $('leaveBtn')?.classList.add('hidden');
+          $('propertyModal')?.classList.add('hidden');
           renderAll();
+        });
+
+        $('closePropBtn')?.addEventListener('click', () => {
+          inspectedTileIdx = null;
+          $('propertyModal')?.classList.add('hidden');
+        });
+
+        $('propertyModal')?.addEventListener('click', (e) => {
+          if (e.target === $('propertyModal')) {
+            inspectedTileIdx = null;
+            $('propertyModal')?.classList.add('hidden');
+          }
         });
 
         $('closeTradeBtn')?.addEventListener('click', () => {
