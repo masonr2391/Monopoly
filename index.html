@@ -270,44 +270,56 @@
       margin-bottom: 6px;
     }
 
-    .token-grid {
+    .color-grid {
       display: grid;
       grid-template-columns: repeat(4, 1fr);
       gap: 8px;
       margin-top: 8px;
     }
 
-    .token-btn {
+    .color-btn {
       display: flex;
       flex-direction: column;
       align-items: center;
       justify-content: center;
-      gap: 4px;
+      gap: 6px;
       padding: 10px 6px;
       border-radius: 12px;
       background: var(--bg-input);
       border: 1px solid var(--border);
     }
 
-    .token-btn.selected {
-      background: rgba(16, 185, 129, 0.15);
-      border-color: var(--emerald);
-      box-shadow: 0 0 0 1px var(--emerald);
+    .color-btn.selected {
+      background: rgba(255, 255, 255, 0.08);
+      border-color: #f8fafc;
+      box-shadow: 0 0 0 1px #f8fafc;
     }
 
-    .token-btn.taken:not(.selected) {
+    .color-btn.taken:not(.selected) {
       opacity: 0.45;
     }
 
-    .token-emoji {
-      font-size: 1.35rem;
-      line-height: 1;
+    .color-swatch {
+      width: 24px;
+      height: 24px;
+      border-radius: 999px;
+      border: 2px solid rgba(255, 255, 255, 0.35);
+      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.45);
     }
 
-    .token-name {
+    .color-name {
       font-size: 0.72rem;
       color: var(--text-muted);
       font-weight: 600;
+    }
+
+    .player-color-badge {
+      width: 14px;
+      height: 14px;
+      border-radius: 999px;
+      display: inline-block;
+      border: 2px solid rgba(255, 255, 255, 0.4);
+      flex-shrink: 0;
     }
 
     .row-gap {
@@ -418,8 +430,10 @@
     }
 
     .tile.selected-tile {
-      box-shadow: inset 0 0 0 2px var(--gold);
+      outline: 2px solid var(--gold);
+      outline-offset: -2px;
       background: #1b2c4c;
+      z-index: 3;
     }
 
     .color-bar {
@@ -452,14 +466,6 @@
     .tile-corner .tile-name {
       font-size: clamp(0.54rem, 0.8vw, 0.78rem);
       -webkit-line-clamp: 3;
-    }
-
-    .owner-strip {
-      position: absolute;
-      bottom: 0;
-      left: 0;
-      right: 0;
-      height: 4px;
     }
 
     .houses-row {
@@ -504,18 +510,18 @@
       flex-wrap: wrap;
       align-items: center;
       justify-content: center;
-      gap: 1px;
+      gap: 2px;
       z-index: 3;
       pointer-events: none;
     }
 
-    .board-token {
-      font-size: clamp(0.68rem, 1.15vw, 1.05rem);
-      line-height: 1;
-      filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.9));
-      background: rgba(9, 13, 22, 0.78);
+    .board-marker {
+      width: clamp(10px, 1.35vw, 15px);
+      height: clamp(10px, 1.35vw, 15px);
       border-radius: 999px;
-      padding: 1px;
+      border: 2px solid #ffffff;
+      box-shadow: 0 1px 4px rgba(0, 0, 0, 0.85);
+      display: inline-block;
     }
 
     .board-center {
@@ -808,8 +814,8 @@
     <div class="panel">
       <div class="panel-title">Multiplayer Lobby &amp; Link Join</div>
       <div class="panel-desc">
-        Pick your name and token, create a room, or open an invite link like <code>?room=ABC123</code>.
-        Syncs across tabs via <code>BroadcastChannel</code>/<code>localStorage</code> and across devices via PeerJS WebRTC.
+        Pick your name and player color, create a room, or open an invite link like <code>?room=ABC123</code>.
+        Owned properties are outlined on the board with the owner's color.
       </div>
 
       <div class="lobby-grid" style="margin-top:0;">
@@ -817,8 +823,8 @@
           <label class="field-label" for="playerNameInput">Your Display Name</label>
           <input id="playerNameInput" type="text" maxlength="20" placeholder="Enter your name" />
 
-          <label class="field-label" style="margin-top:12px;">Choose Your Token</label>
-          <div id="tokenGrid" class="token-grid"></div>
+          <label class="field-label" style="margin-top:12px;">Choose Your Color</label>
+          <div id="colorGrid" class="color-grid"></div>
         </div>
 
         <div>
@@ -911,15 +917,15 @@
     (function () {
       'use strict';
 
-      const TOKENS = [
-        { id: 'car', emoji: '🚗', label: 'Race Car' },
-        { id: 'boot', emoji: '👢', label: 'Boot' },
-        { id: 'hat', emoji: '🎩', label: 'Top Hat' },
-        { id: 'dog', emoji: '🐕', label: 'Scottie' },
-        { id: 'ship', emoji: '🚢', label: 'Battleship' },
-        { id: 'cat', emoji: '🐈', label: 'Cat' },
-        { id: 'dino', emoji: '🦖', label: 'T-Rex' },
-        { id: 'duck', emoji: '🦆', label: 'Rubber Duck' }
+      const PLAYER_COLORS = [
+        { id: 'crimson', hex: '#ef4444', label: 'Crimson' },
+        { id: 'cobalt', hex: '#3b82f6', label: 'Cobalt' },
+        { id: 'emerald', hex: '#10b981', label: 'Emerald' },
+        { id: 'amber', hex: '#f59e0b', label: 'Amber' },
+        { id: 'violet', hex: '#a855f7', label: 'Violet' },
+        { id: 'cyan', hex: '#06b6d4', label: 'Cyan' },
+        { id: 'pink', hex: '#ec4899', label: 'Hot Pink' },
+        { id: 'lime', hex: '#84cc16', label: 'Lime' }
       ];
 
       const SET_ORDER = [
@@ -1066,7 +1072,16 @@
         return 'monopoly_room_v1_' + code;
       }
 
-      function createFreshRoom(code, hostName, tokenId) {
+      function getColorObj(colorId) {
+        return PLAYER_COLORS.find((c) => c.id === colorId) || PLAYER_COLORS[0];
+      }
+
+      function renderColorSwatch(colorId, extraClass) {
+        const col = getColorObj(colorId);
+        return '<span class="player-color-badge ' + (extraClass || '') + '" style="background:' + col.hex + ';" title="' + col.label + '"></span>';
+      }
+
+      function createFreshRoom(code, hostName, colorId) {
         return {
           code: code,
           status: 'lobby',
@@ -1074,1274 +1089,4 @@
           hasRolled: false,
           doublesCount: 0,
           dice: [1, 1],
-          freeParkingPool: 0,
-          statusMessage: 'Waiting in lobby to start match.',
-          players: [
-            {
-              id: clientId,
-              name: hostName || 'Player 1',
-              tokenId: tokenId || 'car',
-              isBot: false,
-              cash: 1500,
-              pos: 0,
-              inJail: false,
-              jailTurns: 0,
-              jailCards: 0,
-              bankrupt: false
-            }
-          ],
-          tiles: BOARD.map(() => ({
-            ownerId: null,
-            houses: 0,
-            mortgaged: false
-          })),
-          logs: ['Room ' + code + ' created by ' + (hostName || 'Player 1') + '.']
-        };
-      }
-
-      function addLog(text) {
-        if (!state || !Array.isArray(state.logs)) return;
-        state.logs.unshift(text);
-        if (state.logs.length > 60) state.logs.length = 60;
-      }
-
-      function saveAndBroadcast(fromRemote) {
-        if (!state || !state.code) return;
-        safeSetStorage(storageKey(state.code), JSON.stringify(state));
-
-        if (broadcastChannel && !fromRemote) {
-          try {
-            broadcastChannel.postMessage({ type: 'STATE_SYNC', code: state.code, state: state });
-          } catch (_) {}
-        }
-
-        if (!fromRemote && peerConns.length > 0) {
-          peerConns.forEach((c) => {
-            if (c && c.open) {
-              try {
-                c.send({ type: 'STATE_SYNC', state: state });
-              } catch (_) {}
-            }
-          });
-        }
-
-        renderAll();
-        scheduleBotIfNeeded();
-      }
-
-      function setupSyncForRoom(code, isHost) {
-        if (broadcastChannel) {
-          try { broadcastChannel.close(); } catch (_) {}
-          broadcastChannel = null;
-        }
-        if (peer) {
-          try { peer.destroy(); } catch (_) {}
-          peer = null;
-          peerConns = [];
-        }
-
-        if ('BroadcastChannel' in window) {
-          try {
-            broadcastChannel = new BroadcastChannel('monopoly_bc_' + code);
-            broadcastChannel.onmessage = (ev) => {
-              if (ev.data && ev.data.type === 'STATE_SYNC' && ev.data.state) {
-                state = ev.data.state;
-                renderAll();
-                scheduleBotIfNeeded();
-              }
-            };
-          } catch (_) {}
-        }
-
-        if (typeof window.Peer === 'function') {
-          try {
-            const peerId = isHost ? 'MONO_ROOM_' + code : undefined;
-            peer = new window.Peer(peerId);
-            peer.on('open', () => {
-              const pill = $('syncPill');
-              if (pill) {
-                pill.textContent = isHost ? '● Host Link Ready' : '● Connected';
-                pill.className = 'pill pill-live';
-              }
-            });
-            peer.on('connection', (conn) => {
-              peerConns.push(conn);
-              conn.on('open', () => {
-                if (state) {
-                  try { conn.send({ type: 'STATE_SYNC', state: state }); } catch (_) {}
-                }
-              });
-              conn.on('data', (msg) => {
-                if (!msg) return;
-                if (msg.type === 'STATE_SYNC' && msg.state) {
-                  state = msg.state;
-                  saveAndBroadcast(true);
-                } else if (msg.type === 'PLAYER_ACTION' && msg.fn) {
-                  applyRemoteAction(msg.fn, msg.payload);
-                }
-              });
-            });
-            peer.on('error', () => {
-              const pill = $('syncPill');
-              if (pill) pill.textContent = '● Local/Fallback Sync';
-            });
-          } catch (_) {}
-        }
-      }
-
-      function connectAsGuest(code, name, tokenId) {
-        const cleanCode = String(code || '').trim().toUpperCase();
-        if (!cleanCode) return;
-
-        let loaded = null;
-        const raw = safeGetStorage(storageKey(cleanCode));
-        if (raw) {
-          try { loaded = JSON.parse(raw); } catch (_) {}
-        }
-
-        if (!loaded) {
-          loaded = createFreshRoom(cleanCode, 'Host', 'car');
-          loaded.logs.unshift('Joined room ' + cleanCode + '.');
-        }
-
-        const existing = loaded.players.find((p) => p.id === clientId);
-        if (!existing && loaded.players.length < 6) {
-          const usedTokens = new Set(loaded.players.map((p) => p.tokenId));
-          const chosenToken = !usedTokens.has(tokenId)
-            ? tokenId
-            : (TOKENS.find((t) => !usedTokens.has(t.id)) || TOKENS[0]).id;
-
-          loaded.players.push({
-            id: clientId,
-            name: name || 'Guest',
-            tokenId: chosenToken,
-            isBot: false,
-            cash: 1500,
-            pos: 0,
-            inJail: false,
-            jailTurns: 0,
-            jailCards: 0,
-            bankrupt: false
-          });
-          loaded.logs.unshift((name || 'Guest') + ' joined room ' + cleanCode + '.');
-        }
-
-        state = loaded;
-        setupSyncForRoom(cleanCode, false);
-
-        if (typeof window.Peer === 'function') {
-          try {
-            const hostPeer = new window.Peer();
-            hostPeer.on('open', () => {
-              const conn = hostPeer.connect('MONO_ROOM_' + cleanCode);
-              conn.on('open', () => {
-                peerConns.push(conn);
-                conn.send({
-                  type: 'PLAYER_ACTION',
-                  fn: 'join_guest',
-                  payload: { id: clientId, name: name || 'Guest', tokenId: tokenId }
-                });
-              });
-              conn.on('data', (msg) => {
-                if (msg && msg.type === 'STATE_SYNC' && msg.state) {
-                  state = msg.state;
-                  renderAll();
-                }
-              });
-            });
-          } catch (_) {}
-        }
-
-        saveAndBroadcast(false);
-      }
-
-      function applyRemoteAction(fn, payload) {
-        if (!state) return;
-        if (fn === 'join_guest' && payload) {
-          if (!state.players.some((p) => p.id === payload.id) && state.players.length < 6) {
-            const used = new Set(state.players.map((p) => p.tokenId));
-            const tok = !used.has(payload.tokenId)
-              ? payload.tokenId
-              : (TOKENS.find((t) => !used.has(t.id)) || TOKENS[0]).id;
-            state.players.push({
-              id: payload.id,
-              name: payload.name || 'Player',
-              tokenId: tok,
-              isBot: false,
-              cash: 1500,
-              pos: 0,
-              inJail: false,
-              jailTurns: 0,
-              jailCards: 0,
-              bankrupt: false
-            });
-            addLog((payload.name || 'Player') + ' connected via invite link.');
-            saveAndBroadcast(false);
-          }
-        }
-      }
-
-      function getTokenObj(tokenId) {
-        return TOKENS.find((t) => t.id === tokenId) || TOKENS[0];
-      }
-
-      function getPlayer(id) {
-        return state && Array.isArray(state.players) ? state.players.find((p) => p.id === id) || null : null;
-      }
-
-      function getCurrentPlayer() {
-        if (!state || !state.players || !state.players.length) return null;
-        return state.players[state.turnIndex % state.players.length];
-      }
-
-      function getMe() {
-        return getPlayer(clientId) || getCurrentPlayer();
-      }
-
-      function ownsFullSet(playerId, setKey) {
-        if (!setKey || !SET_META[setKey]) return false;
-        const setTiles = BOARD.filter((t) => t.set === setKey);
-        return setTiles.length > 0 && setTiles.every((t) => state.tiles[t.idx].ownerId === playerId);
-      }
-
-      function getSortedPlayerProperties(playerId) {
-        const owned = [];
-        BOARD.forEach((tile) => {
-          const ts = state.tiles[tile.idx];
-          if (ts && ts.ownerId === playerId) {
-            owned.push({ tile: tile, ts: ts });
-          }
-        });
-        owned.sort((a, b) => {
-          const sa = SET_ORDER.indexOf(a.tile.set);
-          const sb = SET_ORDER.indexOf(b.tile.set);
-          if (sa !== sb) return sa - sb;
-          return a.tile.idx - b.tile.idx;
-        });
-        return owned;
-      }
-
-      function canTradeProperty(tileIdx) {
-        const tile = BOARD[tileIdx];
-        const ts = state.tiles[tileIdx];
-        if (!tile || !ts || !ts.ownerId) return false;
-        if (tile.set) {
-          const sameSet = BOARD.filter((t) => t.set === tile.set);
-          if (sameSet.some((t) => state.tiles[t.idx].houses > 0)) return false;
-        }
-        return true;
-      }
-
-      function calculateRent(tileIdx, diceSum) {
-        const tile = BOARD[tileIdx];
-        const ts = state.tiles[tileIdx];
-        if (!tile || !ts || !ts.ownerId || ts.mortgaged) return 0;
-
-        if (tile.type === 'property') {
-          if (ts.houses > 0) return tile.rent[ts.houses] || 0;
-          const base = tile.rent[0] || 0;
-          return ownsFullSet(ts.ownerId, tile.set) ? base * 2 : base;
-        }
-        if (tile.type === 'railroad') {
-          const count = BOARD.filter((t) => t.type === 'railroad' && state.tiles[t.idx].ownerId === ts.ownerId).length;
-          return [0, 25, 50, 100, 200][count] || 25;
-        }
-        if (tile.type === 'utility') {
-          const count = BOARD.filter((t) => t.type === 'utility' && state.tiles[t.idx].ownerId === ts.ownerId).length;
-          return (diceSum || 7) * (count >= 2 ? 10 : 4);
-        }
-        return 0;
-      }
-
-      function sendToJail(p) {
-        p.pos = 10;
-        p.inJail = true;
-        p.jailTurns = 0;
-        state.doublesCount = 0;
-        state.hasRolled = true;
-        state.statusMessage = p.name + ' was sent to Jail!';
-        addLog(p.name + ' went to Jail.');
-      }
-
-      function resolveLanding(p, diceSum) {
-        const tile = BOARD[p.pos];
-        const ts = state.tiles[p.pos];
-        selectedTileIdx = p.pos;
-
-        if (tile.type === 'go') {
-          state.statusMessage = p.name + ' landed on GO.';
-        } else if (tile.type === 'jail') {
-          state.statusMessage = p.name + ' is just visiting Jail.';
-        } else if (tile.type === 'parking') {
-          if (state.freeParkingPool > 0) {
-            const won = state.freeParkingPool;
-            p.cash += won;
-            state.freeParkingPool = 0;
-            state.statusMessage = p.name + ' collected $' + won + ' from Free Parking!';
-            addLog(p.name + ' collected $' + won + ' Free Parking jackpot.');
-          } else {
-            state.statusMessage = p.name + ' rested on Free Parking.';
-          }
-        } else if (tile.type === 'gotojail') {
-          sendToJail(p);
-        } else if (tile.type === 'tax') {
-          p.cash -= tile.amount;
-          state.freeParkingPool += tile.amount;
-          state.statusMessage = p.name + ' paid $' + tile.amount + ' ' + tile.name + '.';
-          addLog(p.name + ' paid $' + tile.amount + ' (' + tile.name + ').');
-        } else if (tile.type === 'chance' || tile.type === 'chest') {
-          const deck = tile.type === 'chance' ? CHANCE_CARDS : CHEST_CARDS;
-          const card = deck[Math.floor(Math.random() * deck.length)];
-          addLog(p.name + ' drew ' + (tile.type === 'chance' ? 'Chance' : 'Community Chest') + ': "' + card.text + '"');
-          state.statusMessage = p.name + ': ' + card.text;
-          if (card.action === 'money') {
-            p.cash += card.amount;
-          } else if (card.action === 'parking_fine') {
-            p.cash -= card.amount;
-            state.freeParkingPool += card.amount;
-          } else if (card.action === 'jailcard') {
-            p.jailCards += 1;
-          } else if (card.action === 'jail') {
-            sendToJail(p);
-          } else if (card.action === 'goto') {
-            if (card.passGo && card.pos < p.pos) {
-              p.cash += 200;
-              addLog(p.name + ' passed GO and collected $200.');
-            }
-            p.pos = card.pos;
-            resolveLanding(p, diceSum);
-          } else if (card.action === 'back') {
-            movePlayer(p, -card.steps, diceSum);
-          } else if (card.action === 'pay_players') {
-            state.players.forEach((other) => {
-              if (other.id !== p.id && !other.bankrupt) {
-                p.cash -= card.amount;
-                other.cash += card.amount;
-              }
-            });
-          }
-        } else if (['property', 'railroad', 'utility'].includes(tile.type)) {
-          if (!ts.ownerId) {
-            state.statusMessage = p.name + ' landed on unowned ' + tile.name + ' ($' + tile.price + ').';
-          } else if (ts.ownerId !== p.id && !ts.mortgaged) {
-            const owner = getPlayer(ts.ownerId);
-            const rent = calculateRent(tile.idx, diceSum);
-            p.cash -= rent;
-            if (owner) owner.cash += rent;
-            state.statusMessage = p.name + ' paid $' + rent + ' rent to ' + (owner ? owner.name : 'owner') + ' for ' + tile.name + '.';
-            addLog(p.name + ' paid $' + rent + ' rent to ' + (owner ? owner.name : 'owner') + ' (' + tile.name + ').');
-          } else {
-            state.statusMessage = p.name + ' landed on ' + tile.name + '.';
-          }
-        }
-
-        if (p.cash < 0) {
-          p.bankrupt = true;
-          BOARD.forEach((t, i) => {
-            if (state.tiles[i].ownerId === p.id) {
-              state.tiles[i].ownerId = null;
-              state.tiles[i].houses = 0;
-              state.tiles[i].mortgaged = false;
-            }
-          });
-          addLog(p.name + ' went bankrupt!');
-          const alive = state.players.filter((pl) => !pl.bankrupt);
-          if (alive.length === 1) {
-            state.status = 'ended';
-            state.statusMessage = alive[0].name + ' wins the game!';
-            addLog('🏆 ' + alive[0].name + ' wins the match!');
-          }
-        }
-      }
-
-      function movePlayer(p, steps, diceSum) {
-        const oldPos = p.pos;
-        const nextPos = (oldPos + steps + 40) % 40;
-        if (steps > 0 && oldPos + steps >= 40) {
-          p.cash += 200;
-          addLog(p.name + ' passed GO and collected $200.');
-        }
-        p.pos = nextPos;
-        resolveLanding(p, diceSum);
-      }
-
-      function rollDiceAction() {
-        const p = getCurrentPlayer();
-        if (!p || p.bankrupt || state.hasRolled) return;
-
-        const d1 = Math.floor(Math.random() * 6) + 1;
-        const d2 = Math.floor(Math.random() * 6) + 1;
-        const sum = d1 + d2;
-        const isDouble = d1 === d2;
-        state.dice = [d1, d2];
-
-        if (p.inJail) {
-          if (isDouble) {
-            p.inJail = false;
-            p.jailTurns = 0;
-            addLog(p.name + ' rolled doubles (' + d1 + '+' + d2 + ') and escaped Jail!');
-          } else {
-            p.jailTurns += 1;
-            if (p.jailTurns >= 3) {
-              p.cash -= 50;
-              state.freeParkingPool += 50;
-              p.inJail = false;
-              p.jailTurns = 0;
-              addLog(p.name + ' paid $50 after 3 turns in Jail and rolled ' + sum + '.');
-            } else {
-              state.hasRolled = true;
-              state.statusMessage = p.name + ' rolled ' + d1 + '+' + d2 + ' and stays in Jail.';
-              addLog(p.name + ' stayed in Jail (roll ' + d1 + '+' + d2 + ').');
-              saveAndBroadcast();
-              return;
-            }
-          }
-        } else if (isDouble) {
-          state.doublesCount += 1;
-          if (state.doublesCount >= 3) {
-            sendToJail(p);
-            state.hasRolled = true;
-            saveAndBroadcast();
-            return;
-          }
-        }
-
-        state.hasRolled = !isDouble;
-        movePlayer(p, sum, sum);
-        saveAndBroadcast();
-      }
-
-      function buyCurrentProperty() {
-        const p = getCurrentPlayer();
-        if (!p || p.bankrupt) return;
-        const tile = BOARD[p.pos];
-        const ts = state.tiles[p.pos];
-        if (!tile || !['property', 'railroad', 'utility'].includes(tile.type)) return;
-        if (ts.ownerId || p.cash < tile.price) return;
-
-        p.cash -= tile.price;
-        ts.ownerId = p.id;
-        state.statusMessage = p.name + ' bought ' + tile.name + ' for $' + tile.price + '!';
-        addLog(p.name + ' bought ' + tile.name + ' for $' + tile.price + '.');
-        saveAndBroadcast();
-      }
-
-      function payJailFine() {
-        const p = getCurrentPlayer();
-        if (!p || !p.inJail || p.cash < 50) return;
-        p.cash -= 50;
-        state.freeParkingPool += 50;
-        p.inJail = false;
-        p.jailTurns = 0;
-        addLog(p.name + ' paid $50 to leave Jail.');
-        saveAndBroadcast();
-      }
-
-      function useJailCard() {
-        const p = getCurrentPlayer();
-        if (!p || !p.inJail || p.jailCards < 1) return;
-        p.jailCards -= 1;
-        p.inJail = false;
-        p.jailTurns = 0;
-        addLog(p.name + ' used a Get Out of Jail Free card.');
-        saveAndBroadcast();
-      }
-
-      function endTurnAction() {
-        if (!state || state.status !== 'playing') return;
-        state.hasRolled = false;
-        state.doublesCount = 0;
-        let next = (state.turnIndex + 1) % state.players.length;
-        let guard = 0;
-        while (state.players[next].bankrupt && guard < state.players.length) {
-          next = (next + 1) % state.players.length;
-          guard++;
-        }
-        state.turnIndex = next;
-        state.statusMessage = state.players[state.turnIndex].name + "'s turn.";
-        saveAndBroadcast();
-      }
-
-      function buyHouseAction(tileIdx) {
-        const p = getMe();
-        const tile = BOARD[tileIdx];
-        const ts = state.tiles[tileIdx];
-        if (!p || !tile || tile.type !== 'property' || ts.ownerId !== p.id || ts.mortgaged) return;
-        if (!ownsFullSet(p.id, tile.set) || ts.houses >= 5) return;
-        const cost = SET_META[tile.set].houseCost;
-        if (p.cash < cost) return;
-
-        p.cash -= cost;
-        ts.houses += 1;
-        addLog(p.name + ' built ' + (ts.houses === 5 ? 'a Hotel' : 'House #' + ts.houses) + ' on ' + tile.name + ' for $' + cost + '.');
-        saveAndBroadcast();
-      }
-
-      function toggleMortgageAction(tileIdx) {
-        const p = getMe();
-        const tile = BOARD[tileIdx];
-        const ts = state.tiles[tileIdx];
-        if (!p || !tile || ts.ownerId !== p.id) return;
-
-        if (!ts.mortgaged) {
-          if (ts.houses > 0) {
-            showToast('Sell buildings on this property before mortgaging.');
-            return;
-          }
-          ts.mortgaged = true;
-          p.cash += tile.mortgage;
-          addLog(p.name + ' mortgaged ' + tile.name + ' for $' + tile.mortgage + '.');
-        } else {
-          const unmortgageCost = Math.ceil(tile.mortgage * 1.1);
-          if (p.cash < unmortgageCost) {
-            showToast('Need $' + unmortgageCost + ' to unmortgage.');
-            return;
-          }
-          ts.mortgaged = false;
-          p.cash -= unmortgageCost;
-          addLog(p.name + ' unmortgaged ' + tile.name + ' for $' + unmortgageCost + '.');
-        }
-        saveAndBroadcast();
-      }
-
-      function openTradeModal(targetPlayerId) {
-        const me = getMe();
-        const other = getPlayer(targetPlayerId);
-        if (!me || !other || me.id === other.id || other.bankrupt) return;
-
-        activeTradeDraft = {
-          fromId: me.id,
-          toId: other.id,
-          offerProps: [],
-          requestProps: [],
-          offerCash: 0,
-          requestCash: 0,
-          offerJailCards: 0,
-          requestJailCards: 0
-        };
-        renderTradeModal();
-        const modal = $('tradeModal');
-        if (modal) modal.classList.remove('hidden');
-      }
-
-      function estimatePropertyValue(tileIdx, forPlayerId) {
-        const tile = BOARD[tileIdx];
-        const ts = state.tiles[tileIdx];
-        if (!tile) return 0;
-        let val = tile.price || 100;
-        if (tile.set) {
-          const setTiles = BOARD.filter((t) => t.set === tile.set);
-          const ownedInSet = setTiles.filter((t) => state.tiles[t.idx].ownerId === forPlayerId).length;
-          if (ownedInSet === setTiles.length - 1) val *= 1.85;
-          else if (ownedInSet > 0) val *= 1.25;
-        }
-        if (ts && ts.mortgaged) val *= 0.65;
-        return Math.round(val);
-      }
-
-      function evaluateBotTrade(bot, draft) {
-        const human = getPlayer(draft.fromId);
-        if (!bot || !human) return { decision: 'decline', reason: 'Invalid players.' };
-
-        let botGains = draft.requestCash + (draft.requestJailCards * 45);
-        let botGives = draft.offerCash + (draft.offerJailCards * 45);
-
-        draft.requestProps.forEach((idx) => { botGains += estimatePropertyValue(idx, bot.id); });
-        draft.offerProps.forEach((idx) => { botGives += estimatePropertyValue(idx, bot.id); });
-
-        if (botGives > bot.cash) {
-          return { decision: 'decline', reason: bot.name + " doesn't have enough cash ($" + bot.cash + ")." };
-        }
-
-        const ratio = botGives === 0 ? 999 : botGains / botGives;
-        if (ratio >= 0.98) {
-          return { decision: 'accept', reason: bot.name + ' accepted the trade!' };
-        }
-        if (ratio >= 0.78 && bot.cash >= 60) {
-          const counterCash = Math.max(10, Math.min(bot.cash, Math.round((botGains - botGives) * 0.65)));
-          return {
-            decision: 'counter',
-            counterCash: counterCash,
-            reason: bot.name + ' countered by adding $' + counterCash + ' cash.'
-          };
-        }
-        return { decision: 'decline', reason: bot.name + ' declined the offer as too one-sided.' };
-      }
-
-      function executeTrade(draft) {
-        const pFrom = getPlayer(draft.fromId);
-        const pTo = getPlayer(draft.toId);
-        if (!pFrom || !pTo) return;
-
-        if (pFrom.cash < draft.offerCash || pTo.cash < draft.requestCash) {
-          showToast('Insufficient cash for trade.');
-          return;
-        }
-
-        pFrom.cash -= draft.offerCash;
-        pTo.cash += draft.offerCash;
-        pTo.cash -= draft.requestCash;
-        pFrom.cash += draft.requestCash;
-
-        pFrom.jailCards -= draft.offerJailCards;
-        pTo.jailCards += draft.offerJailCards;
-        pTo.jailCards -= draft.requestJailCards;
-        pFrom.jailCards += draft.requestJailCards;
-
-        draft.offerProps.forEach((idx) => { state.tiles[idx].ownerId = pTo.id; });
-        draft.requestProps.forEach((idx) => { state.tiles[idx].ownerId = pFrom.id; });
-
-        addLog('🤝 Trade completed between ' + pFrom.name + ' and ' + pTo.name + '.');
-        state.statusMessage = 'Trade completed between ' + pFrom.name + ' and ' + pTo.name + '!';
-        activeTradeDraft = null;
-        const modal = $('tradeModal');
-        if (modal) modal.classList.add('hidden');
-        saveAndBroadcast();
-      }
-
-      function renderTradeModal() {
-        if (!activeTradeDraft || !state) return;
-        const me = getPlayer(activeTradeDraft.fromId);
-        const other = getPlayer(activeTradeDraft.toId);
-        if (!me || !other) return;
-
-        $('tradeModalTitle').textContent = 'Trade: ' + me.name + ' ↔ ' + other.name;
-        $('tradeModalSub').textContent = me.name + ' Cash: $' + me.cash + ' · ' + other.name + ' Cash: $' + other.cash;
-
-        const buildSideHtml = (player, propListKey, cashKey, cardKey, isOffer) => {
-          const grouped = getSortedPlayerProperties(player.id);
-          const bySet = {};
-          grouped.forEach((item) => {
-            const k = item.tile.set || 'other';
-            if (!bySet[k]) bySet[k] = [];
-            bySet[k].push(item);
-          });
-
-          let setsHtml = '';
-          SET_ORDER.forEach((setKey) => {
-            const list = bySet[setKey];
-            if (!list || !list.length) return;
-            const meta = SET_META[setKey];
-            setsHtml += `
-              <div class="set-group">
-                <div class="set-group-title">
-                  <span class="dot" style="background:${meta.color};"></span>
-                  ${meta.label}
-                </div>
-                ${list.map((entry) => {
-                  const tile = entry.tile;
-                  const ts = entry.ts;
-                  const checked = activeTradeDraft[propListKey].includes(tile.idx);
-                  const tradable = canTradeProperty(tile.idx);
-                  return `
-                    <label class="trade-prop-row">
-                      <span>
-                        <input type="checkbox" data-trade-prop="${propListKey}" value="${tile.idx}" ${checked ? 'checked' : ''} ${!tradable ? 'disabled' : ''} />
-                        <strong>${tile.name}</strong>
-                        ${ts.mortgaged ? '<span style="color:#fda4af; font-size:0.72rem;">(Mortgaged)</span>' : ''}
-                        ${!tradable ? '<span style="color:#fbbf24; font-size:0.72rem;">(Has Houses)</span>' : ''}
-                      </span>
-                      <span class="mono" style="color:var(--text-muted);">$${tile.price}</span>
-                    </label>
-                  `;
-                }).join('')}
-              </div>
-            `;
-          });
-
-          if (!setsHtml) {
-            setsHtml = '<div class="panel-desc" style="margin-top:8px;">No properties owned.</div>';
-          }
-
-          return `
-            <div class="trade-side">
-              <div style="display:flex; justify-content:space-between; align-items:center;">
-                <strong>${getTokenObj(player.tokenId).emoji} ${player.name} ${isOffer ? '(You)' : '(Partner)'}</strong>
-                <span class="pill mono">Cash: $${player.cash}</span>
-              </div>
-              <div style="margin-top:10px;">
-                <label class="field-label">Cash to ${isOffer ? 'Send' : 'Request'} ($)</label>
-                <input id="tradeInput_${cashKey}" class="mono" type="number" min="0" max="${player.cash}" value="${activeTradeDraft[cashKey]}" style="width:100%;" />
-              </div>
-              <div style="margin-top:10px;">
-                <label class="field-label">Get Out of Jail Free Cards (Have: ${player.jailCards})</label>
-                <input id="tradeInput_${cardKey}" class="mono" type="number" min="0" max="${player.jailCards}" value="${activeTradeDraft[cardKey]}" style="width:100%;" />
-              </div>
-              ${setsHtml}
-            </div>
-          `;
-        };
-
-        $('tradeModalBody').innerHTML = `
-          <div class="trade-cols">
-            ${buildSideHtml(me, 'offerProps', 'offerCash', 'offerJailCards', true)}
-            ${buildSideHtml(other, 'requestProps', 'requestCash', 'requestJailCards', false)}
-          </div>
-          <div id="tradeEvalNote" class="status-banner" style="margin-top:12px; max-width:none;">
-            Select properties, cash, or Jail Free cards, then propose the deal.
-          </div>
-          <div class="action-grid" style="justify-content:flex-end; margin-top:12px;">
-            <button id="proposeTradeBtn" class="btn-gold">Propose Trade to ${other.name}</button>
-          </div>
-        `;
-
-        $('tradeModalBody').querySelectorAll('input[data-trade-prop]').forEach((cb) => {
-          cb.addEventListener('change', () => {
-            const key = cb.getAttribute('data-trade-prop');
-            const idx = Number(cb.value);
-            if (cb.checked) {
-              if (!activeTradeDraft[key].includes(idx)) activeTradeDraft[key].push(idx);
-            } else {
-              activeTradeDraft[key] = activeTradeDraft[key].filter((x) => x !== idx);
-            }
-          });
-        });
-
-        const syncTradeInputs = () => {
-          activeTradeDraft.offerCash = Math.max(0, Math.min(me.cash, Number($('tradeInput_offerCash').value) || 0));
-          activeTradeDraft.requestCash = Math.max(0, Math.min(other.cash, Number($('tradeInput_requestCash').value) || 0));
-          activeTradeDraft.offerJailCards = Math.max(0, Math.min(me.jailCards, Number($('tradeInput_offerJailCards').value) || 0));
-          activeTradeDraft.requestJailCards = Math.max(0, Math.min(other.jailCards, Number($('tradeInput_requestJailCards').value) || 0));
-        };
-
-        $('proposeTradeBtn').addEventListener('click', () => {
-          syncTradeInputs();
-          if (other.isBot) {
-            const evalRes = evaluateBotTrade(other, activeTradeDraft);
-            if (evalRes.decision === 'accept') {
-              executeTrade(activeTradeDraft);
-            } else if (evalRes.decision === 'counter') {
-              activeTradeDraft.offerCash = Math.min(me.cash, activeTradeDraft.offerCash + evalRes.counterCash);
-              renderTradeModal();
-              const note = $('tradeEvalNote');
-              if (note) note.textContent = evalRes.reason + ' Offer updated to $' + activeTradeDraft.offerCash + ' cash.';
-            } else {
-              const note = $('tradeEvalNote');
-              if (note) note.textContent = evalRes.reason;
-              addLog(evalRes.reason);
-              saveAndBroadcast();
-            }
-          } else {
-            executeTrade(activeTradeDraft);
-          }
-        });
-      }
-
-      function scheduleBotIfNeeded() {
-        clearTimeout(botTimer);
-        if (!state || state.status !== 'playing') return;
-        const p = getCurrentPlayer();
-        if (!p || !p.isBot || p.bankrupt) return;
-
-        botTimer = setTimeout(() => {
-          if (!state || state.status !== 'playing') return;
-          const cur = getCurrentPlayer();
-          if (!cur || !cur.isBot || cur.bankrupt) return;
-
-          if (!state.hasRolled) {
-            if (cur.inJail && cur.jailCards > 0) {
-              useJailCard();
-              return;
-            }
-            if (cur.inJail && cur.cash >= 250) {
-              payJailFine();
-              return;
-            }
-            rollDiceAction();
-            return;
-          }
-
-          const tile = BOARD[cur.pos];
-          const ts = state.tiles[cur.pos];
-          if (tile && ['property', 'railroad', 'utility'].includes(tile.type) && !ts.ownerId && cur.cash >= tile.price + 120) {
-            buyCurrentProperty();
-            return;
-          }
-
-          endTurnAction();
-        }, 700);
-      }
-
-      function renderDie(el, val) {
-        if (!el) return;
-        const pipMap = {
-          1: [4],
-          2: [2, 6],
-          3: [2, 4, 6],
-          4: [0, 2, 6, 8],
-          5: [0, 2, 4, 6, 8],
-          6: [0, 2, 3, 5, 6, 8]
-        };
-        const active = new Set(pipMap[val] || [4]);
-        let html = '';
-        for (let i = 0; i < 9; i++) {
-          html += '<span class="die-pip" style="opacity:' + (active.has(i) ? 1 : 0) + ';"></span>';
-        }
-        el.innerHTML = html;
-      }
-
-      function tileGridPosition(idx) {
-        if (idx === 0) return { row: 11, col: 11, corner: true };
-        if (idx > 0 && idx < 10) return { row: 11, col: 11 - idx, corner: false };
-        if (idx === 10) return { row: 11, col: 1, corner: true };
-        if (idx > 10 && idx < 20) return { row: 11 - (idx - 10), col: 1, corner: false };
-        if (idx === 20) return { row: 1, col: 1, corner: true };
-        if (idx > 20 && idx < 30) return { row: 1, col: 1 + (idx - 20), corner: false };
-        if (idx === 30) return { row: 1, col: 11, corner: true };
-        return { row: 1 + (idx - 30), col: 11, corner: false };
-      }
-
-      function renderLobby() {
-        const nameInput = $('playerNameInput');
-        if (nameInput && !nameInput.value) {
-          nameInput.value = safeGetStorage('monopoly_saved_name') || 'Player 1';
-        }
-        const myToken = safeGetStorage('monopoly_saved_token') || 'car';
-
-        const takenTokens = new Map();
-        if (state && state.players) {
-          state.players.forEach((p) => {
-            if (p.id !== clientId) takenTokens.set(p.tokenId, p.name);
-          });
-        }
-
-        const tokenGrid = $('tokenGrid');
-        if (tokenGrid) {
-          tokenGrid.innerHTML = TOKENS.map((t) => {
-            const isSel = t.id === myToken;
-            const isTaken = takenTokens.has(t.id);
-            return `
-              <button type="button" class="token-btn ${isSel ? 'selected' : ''} ${isTaken ? 'taken' : ''}" data-pick-token="${t.id}">
-                <span class="token-emoji">${t.emoji}</span>
-                <span class="token-name">${t.label}</span>
-              </button>
-            `;
-          }).join('');
-
-          tokenGrid.querySelectorAll('[data-pick-token]').forEach((btn) => {
-            btn.addEventListener('click', () => {
-              const tokId = btn.getAttribute('data-pick-token');
-              safeSetStorage('monopoly_saved_token', tokId);
-              if (state) {
-                const me = state.players.find((p) => p.id === clientId);
-                if (me) {
-                  me.tokenId = tokId;
-                  saveAndBroadcast();
-                }
-              }
-              renderLobby();
-            });
-          });
-        }
-
-        if (state && state.code) {
-          const url = getInviteUrl(state.code);
-          $('lobbyInviteBox')?.classList.remove('hidden');
-          if ($('lobbyInviteUrl')) $('lobbyInviteUrl').textContent = url;
-          $('copyLinkBtn')?.classList.remove('hidden');
-          $('leaveBtn')?.classList.remove('hidden');
-          $('roomRosterPanel')?.classList.remove('hidden');
-          if ($('rosterRoomCode')) $('rosterRoomCode').textContent = state.code;
-          if ($('roomPill')) $('roomPill').textContent = 'ROOM: ' + state.code;
-
-          if ($('seatList')) {
-            $('seatList').innerHTML = state.players.map((p) => {
-              const tok = getTokenObj(p.tokenId);
-              return `
-                <div class="seat-item">
-                  <div class="seat-left">
-                    <span style="font-size:1.3rem;">${tok.emoji}</span>
-                    <div>
-                      <strong>${p.name}</strong>
-                      <span class="pill" style="margin-left:6px;">${p.isBot ? 'AI Bot' : 'Human'}</span>
-                    </div>
-                  </div>
-                  <span class="mono" style="color:var(--emerald);">$${p.cash}</span>
-                </div>
-              `;
-            }).join('');
-          }
-
-          if ($('startMatchBtn')) $('startMatchBtn').disabled = state.players.length < 2;
-          if ($('addBotBtn')) $('addBotBtn').disabled = state.players.length >= 6;
-        } else {
-          $('lobbyInviteBox')?.classList.add('hidden');
-          $('copyLinkBtn')?.classList.add('hidden');
-          $('leaveBtn')?.classList.add('hidden');
-          $('roomRosterPanel')?.classList.add('hidden');
-          if ($('roomPill')) $('roomPill').textContent = 'ROOM: ----';
-        }
-      }
-
-      function renderBoard() {
-        const grid = $('boardGrid');
-        if (!grid || !state) return;
-
-        let html = `
-          <div class="board-center">
-            <div class="center-title">MONOPOLY</div>
-            <div class="dice-stage">
-              <div id="dieA" class="die-face"></div>
-              <div id="dieB" class="die-face"></div>
-            </div>
-            <div id="centerStatus" class="status-banner">${state.statusMessage || ''}</div>
-          </div>
-        `;
-
-        BOARD.forEach((tile) => {
-          const pos = tileGridPosition(tile.idx);
-          const ts = state.tiles[tile.idx];
-          const owner = ts.ownerId ? getPlayer(ts.ownerId) : null;
-          const playersHere = state.players.filter((p) => !p.bankrupt && p.pos === tile.idx);
-          const setMeta = tile.set ? SET_META[tile.set] : null;
-
-          let housesHtml = '';
-          if (ts.houses === 5) {
-            housesHtml = '<div class="houses-row"><span class="hotel-pip"></span></div>';
-          } else if (ts.houses > 0) {
-            housesHtml = '<div class="houses-row">' + Array.from({ length: ts.houses }).map(() => '<span class="house-pip"></span>').join('') + '</div>';
-          }
-
-          html += `
-            <div class="tile ${pos.corner ? 'tile-corner' : ''} ${selectedTileIdx === tile.idx ? 'selected-tile' : ''}"
-                 data-tile-idx="${tile.idx}"
-                 style="grid-row:${pos.row}; grid-column:${pos.col};">
-              ${setMeta ? '<div class="color-bar" style="background:' + setMeta.color + ';"></div>' : ''}
-              ${housesHtml}
-              ${ts.mortgaged ? '<span class="mortgaged-badge">M</span>' : ''}
-              <div class="tile-name">${tile.name}</div>
-              ${tile.price ? '<div class="tile-price">$' + tile.price + '</div>' : ''}
-              <div class="tokens-layer">
-                ${playersHere.map((pl) => '<span class="board-token" title="' + pl.name + '">' + getTokenObj(pl.tokenId).emoji + '</span>').join('')}
-              </div>
-              ${owner ? '<div class="owner-strip" style="background:' + (setMeta ? setMeta.color : 'var(--emerald)') + ';"></div>' : ''}
-            </div>
-          `;
-        });
-
-        grid.innerHTML = html;
-        renderDie($('dieA'), (state.dice && state.dice[0]) || 1);
-        renderDie($('dieB'), (state.dice && state.dice[1]) || 1);
-
-        grid.querySelectorAll('[data-tile-idx]').forEach((el) => {
-          el.addEventListener('click', () => {
-            selectedTileIdx = Number(el.getAttribute('data-tile-idx'));
-            renderBoard();
-            renderInspector();
-          });
-        });
-      }
-
-      function renderTurnControls() {
-        const cur = getCurrentPlayer();
-        const me = getMe();
-        if (!cur || !me) return;
-
-        if ($('potAmount')) $('potAmount').textContent = state.freeParkingPool || 0;
-        if ($('turnHeading')) $('turnHeading').textContent = getTokenObj(cur.tokenId).emoji + ' ' + cur.name + "'s Turn";
-        if ($('turnSub')) {
-          $('turnSub').textContent = state.status === 'ended'
-            ? 'Match complete!'
-            : (cur.isBot ? 'AI Bot thinking...' : 'Choose an action below');
-        }
-
-        const canAct = state.status === 'playing' && !cur.isBot && !cur.bankrupt;
-        const curTile = BOARD[cur.pos];
-        const curTileState = state.tiles[cur.pos];
-        const canBuy = canAct &&
-          ['property', 'railroad', 'utility'].includes(curTile.type) &&
-          !curTileState.ownerId &&
-          cur.cash >= curTile.price;
-
-        let btns = `
-          <button id="actRoll" class="btn-primary" ${!canAct || state.hasRolled ? 'disabled' : ''}>Roll Dice</button>
-          <button id="actBuy" class="btn-gold" ${!canBuy ? 'disabled' : ''}>Buy ${curTile.name} ($${curTile.price || 0})</button>
-          <button id="actEnd" ${!canAct || !state.hasRolled ? 'disabled' : ''}>End Turn</button>
-        `;
-
-        if (canAct && cur.inJail) {
-          btns += '<button id="actJailFine" class="btn-sm" ' + (cur.cash < 50 ? 'disabled' : '') + '>Pay $50 Jail Fine</button>';
-          if (cur.jailCards > 0) {
-            btns += '<button id="actJailCard" class="btn-sm">Use Jail Card (' + cur.jailCards + ')</button>';
-          }
-        }
-
-        if ($('actionButtons')) {
-          $('actionButtons').innerHTML = btns;
-          $('actRoll')?.addEventListener('click', rollDiceAction);
-          $('actBuy')?.addEventListener('click', buyCurrentProperty);
-          $('actEnd')?.addEventListener('click', endTurnAction);
-          $('actJailFine')?.addEventListener('click', payJailFine);
-          $('actJailCard')?.addEventListener('click', useJailCard);
-        }
-      }
-
-      function renderPlayersAndSelection() {
-        const cur = getCurrentPlayer();
-        const me = getMe();
-        const listEl = $('playersList');
-        if (!listEl) return;
-
-        listEl.innerHTML = state.players.map((p) => {
-          const tok = getTokenObj(p.tokenId);
-          const isTurn = cur && cur.id === p.id;
-          const isSelected = selectedPlayerId === p.id;
-          return `
-            <div class="player-card ${isTurn ? 'active-turn' : ''} ${isSelected ? 'selected-player' : ''} ${p.bankrupt ? 'bankrupt' : ''}">
-              <div class="player-top">
-                <button type="button" class="player-name-btn" data-select-player="${p.id}">
-                  <span>${tok.emoji}</span>
-                  <span>${p.name}</span>
-                  ${p.isBot ? '<span class="pill" style="padding:2px 7px; font-size:0.68rem;">BOT</span>' : ''}
-                  ${p.inJail ? '<span class="pill" style="padding:2px 7px; font-size:0.68rem; color:#fda4af;">JAIL</span>' : ''}
-                </button>
-                <span class="mono" style="font-weight:700; color:#6ee7b7;">$${p.cash}</span>
-              </div>
-              <div style="font-size:0.75rem; color:var(--text-muted); margin-top:4px;">
-                Tile: ${(BOARD[p.pos] && BOARD[p.pos].name) || 'GO'} · Cards: ${p.jailCards}
-              </div>
-            </div>
-          `;
-        }).join('');
-
-        listEl.querySelectorAll('[data-select-player]').forEach((btn) => {
-          btn.addEventListener('click', () => {
-            const pid = btn.getAttribute('data-select-player');
-            selectedPlayerId = selectedPlayerId === pid ? null : pid;
-            renderPlayersAndSelection();
-          });
-        });
-
-        const box = $('selectedPlayerBox');
-        const target = selectedPlayerId ? getPlayer(selectedPlayerId) : null;
-        if (!box) return;
-
-        if (!target) {
-          box.classList.add('hidden');
-          box.innerHTML = '';
-          return;
-        }
-
-        const sortedProps = getSortedPlayerProperties(target.id);
-        const canTradeWithTarget = me && target.id !== me.id && !target.bankrupt && state.status === 'playing';
-
-        box.classList.remove('hidden');
-        box.innerHTML = `
-          <div style="display:flex; align-items:center; justify-content:space-between; gap:8px;">
-            <div>
-              <strong>${getTokenObj(target.tokenId).emoji} ${target.name}</strong>
-              <span class="mono" style="margin-left:8px; color:#fcd34d;">$${target.cash}</span>
-            </div>
-            <button id="tradeWithSelectedBtn" class="btn-sm btn-gold" ${!canTradeWithTarget ? 'disabled' : ''}>
-              Trade with ${target.name}
-            </button>
-          </div>
-          <div style="font-size:0.74rem; color:var(--text-muted); margin-top:8px;">
-            Properties (${sortedProps.length}, sorted by set):
-          </div>
-          <div class="deed-chips">
-            ${sortedProps.length ? sortedProps.map((entry) => {
-              const col = entry.tile.set && SET_META[entry.tile.set] ? SET_META[entry.tile.set].color : 'var(--emerald)';
-              return '<span class="deed-chip"><span class="dot" style="background:' + col + ';"></span>' + entry.tile.name + (entry.ts.mortgaged ? ' (M)' : '') + '</span>';
-            }).join('') : '<span class="panel-desc" style="margin:0;">None</span>'}
-          </div>
-        `;
-
-        $('tradeWithSelectedBtn')?.addEventListener('click', () => openTradeModal(target.id));
-      }
-
-      function renderInspector() {
-        const body = $('tileInspectorBody');
-        const tile = BOARD[selectedTileIdx];
-        const ts = state && state.tiles ? state.tiles[selectedTileIdx] : null;
-        const me = getMe();
-        if (!body || !tile || !ts) return;
-
-        const owner = ts.ownerId ? getPlayer(ts.ownerId) : null;
-        const setMeta = tile.set ? SET_META[tile.set] : null;
-        let extra = '';
-
-        if (tile.type === 'property') {
-          const canBuild = me && ts.ownerId === me.id && !ts.mortgaged && ownsFullSet(me.id, tile.set) && ts.houses < 5 && me.cash >= setMeta.houseCost;
-          extra = `
-            <div style="font-size:0.8rem; margin-top:6px;">
-              Base Rent: $${tile.rent[0]} · Set Bonus: $${tile.rent[0] * 2} · 1H: $${tile.rent[1]} · Hotel: $${tile.rent[5]}<br/>
-              Houses/Hotel: ${ts.houses === 5 ? 'Hotel' : ts.houses} · House Cost: $${setMeta.houseCost}
-            </div>
-            <div class="action-grid">
-              <button id="inspBuildBtn" class="btn-sm btn-primary" ${!canBuild ? 'disabled' : ''}>Build House ($${setMeta.houseCost})</button>
-              ${me && ts.ownerId === me.id ? '<button id="inspMortBtn" class="btn-sm">' + (ts.mortgaged ? 'Unmortgage ($' + Math.ceil(tile.mortgage * 1.1) + ')' : 'Mortgage (+$' + tile.mortgage + ')') + '</button>' : ''}
-            </div>
-          `;
-        } else if (tile.type === 'railroad' || tile.type === 'utility') {
-          extra = `
-            <div style="font-size:0.8rem; margin-top:6px;">
-              Price: $${tile.price} · Mortgage Value: $${tile.mortgage}
-            </div>
-            ${me && ts.ownerId === me.id ? '<div class="action-grid"><button id="inspMortBtn" class="btn-sm">' + (ts.mortgaged ? 'Unmortgage ($' + Math.ceil(tile.mortgage * 1.1) + ')' : 'Mortgage (+$' + tile.mortgage + ')') + '</button></div>' : ''}
-          `;
-        }
-
-        body.innerHTML = `
-          <div style="display:flex; align-items:center; gap:8px; margin-bottom:4px;">
-            ${setMeta ? '<span class="dot" style="background:' + setMeta.color + '; width:12px; height:12px;"></span>' : ''}
-            <strong style="color:var(--text-main);">${tile.name}</strong>
-          </div>
-          <div style="font-size:0.8rem;">Owner: ${owner ? getTokenObj(owner.tokenId).emoji + ' ' + owner.name + (ts.mortgaged ? ' (Mortgaged)' : '') : 'Unowned'}</div>
-          ${extra}
-        `;
-
-        $('inspBuildBtn')?.addEventListener('click', () => buyHouseAction(tile.idx));
-        $('inspMortBtn')?.addEventListener('click', () => toggleMortgageAction(tile.idx));
-      }
-
-      function renderLogs() {
-        const logEl = $('gameLog');
-        if (!logEl || !state) return;
-        logEl.innerHTML = (state.logs || [])
-          .map((entry) => '<div class="log-entry">' + entry + '</div>')
-          .join('');
-      }
-
-      function renderAll() {
-        if (!state || state.status === 'lobby') {
-          $('lobbyView')?.classList.remove('hidden');
-          $('gameView')?.classList.add('hidden');
-          renderLobby();
-          return;
-        }
-
-        $('lobbyView')?.classList.add('hidden');
-        $('gameView')?.classList.remove('hidden');
-        $('copyLinkBtn')?.classList.remove('hidden');
-        $('leaveBtn')?.classList.remove('hidden');
-        if ($('roomPill')) $('roomPill').textContent = 'ROOM: ' + state.code;
-
-        renderBoard();
-        renderTurnControls();
-        renderPlayersAndSelection();
-        renderInspector();
-        renderLogs();
-      }
-
-      function bindEvents() {
-        $('playerNameInput')?.addEventListener('input', (e) => {
-          const val = e.target.value.trim();
-          safeSetStorage('monopoly_saved_name', val);
-          if (state && state.players) {
-            const me = state.players.find((p) => p.id === clientId);
-            if (me && val) {
-              me.name = val;
-              saveAndBroadcast();
-            }
-          }
-        });
-
-        $('createRoomBtn')?.addEventListener('click', () => {
-          const name = ($('playerNameInput')?.value || '').trim() || 'Player 1';
-          const tokenId = safeGetStorage('monopoly_saved_token') || 'car';
-          const code = randomCode(6);
-          state = createFreshRoom(code, name, tokenId);
-          setupSyncForRoom(code, true);
-          saveAndBroadcast();
-          showToast('Created room ' + code);
-        });
-
-        $('joinRoomBtn')?.addEventListener('click', () => {
-          const code = ($('joinCodeInput')?.value || '').trim().toUpperCase();
-          if (!code) {
-            showToast('Enter a room code first.');
-            return;
-          }
-          const name = ($('playerNameInput')?.value || '').trim() || 'Player';
-          const tokenId = safeGetStorage('monopoly_saved_token') || 'boot';
-          connectAsGuest(code, name, tokenId);
-          showToast('Joined room ' + code);
-        });
-
-        $('addBotBtn')?.addEventListener('click', () => {
-          if (!state || state.players.length >= 6) return;
-          const used = new Set(state.players.map((p) => p.tokenId));
-          const tok = TOKENS.find((t) => !used.has(t.id)) || TOKENS[0];
-          const botIndex = state.players.filter((p) => p.isBot).length + 1;
-          state.players.push({
-            id: 'bot_' + Math.random().toString(36).slice(2, 8),
-            name: 'Bot ' + botIndex,
-            tokenId: tok.id,
-            isBot: true,
-            cash: 1500,
-            pos: 0,
-            inJail: false,
-            jailTurns: 0,
-            jailCards: 0,
-            bankrupt: false
-          });
-          addLog('Added AI Bot ' + botIndex + ' (' + tok.label + ').');
-          saveAndBroadcast();
-        });
-
-        $('startMatchBtn')?.addEventListener('click', () => {
-          if (!state || state.players.length < 2) return;
-          state.status = 'playing';
-          state.turnIndex = 0;
-          state.hasRolled = false;
-          state.statusMessage = state.players[0].name + "'s turn to roll!";
-          addLog('Match started!');
-          saveAndBroadcast();
-        });
-
-        const copyInvite = () => {
-          if (!state || !state.code) return;
-          const url = getInviteUrl(state.code);
-          if (navigator.clipboard && navigator.clipboard.writeText) {
-            navigator.clipboard.writeText(url).then(
-              () => showToast('Invite link copied!'),
-              () => showToast(url)
-            );
-          } else {
-            showToast(url);
-          }
-        };
-
-        $('copyLinkBtn')?.addEventListener('click', copyInvite);
-        $('lobbyCopyBtn')?.addEventListener('click', copyInvite);
-
-        $('leaveBtn')?.addEventListener('click', () => {
-          state = null;
-          selectedPlayerId = null;
-          $('copyLinkBtn')?.classList.add('hidden');
-          $('leaveBtn')?.classList.add('hidden');
-          renderAll();
-        });
-
-        $('closeTradeBtn')?.addEventListener('click', () => {
-          activeTradeDraft = null;
-          $('tradeModal')?.classList.add('hidden');
-        });
-      }
-
-      function init() {
-        bindEvents();
-        renderLobby();
-
-        try {
-          const params = new URLSearchParams(window.location.search);
-          const roomParam = (params.get('room') || '').trim().toUpperCase();
-          if (roomParam) {
-            if ($('joinCodeInput')) $('joinCodeInput').value = roomParam;
-            const name = safeGetStorage('monopoly_saved_name') || 'Player';
-            const tokenId = safeGetStorage('monopoly_saved_token') || 'boot';
-            connectAsGuest(roomParam, name, tokenId);
-          }
-        } catch (_) {}
-      }
-
-      if (document.readyState === 'loading') {
-        document.addEventListener('DOMContentLoaded', init);
-      } else {
-        init();
-      }
-    })();
-  </script>
-</body>
-</html>
+          freeParkingPool:
